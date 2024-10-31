@@ -1,0 +1,20 @@
+# Line-ending policy. Everything checks out as LF on every platform, so a
+# Windows clone cannot rewrite text files to CRLF. This repository depends on
+# exact bytes more than most: the bit-exactness gate compares two encodes with
+# `cmp`, conformance vectors are pinned by hash, and the frozen specification
+# assets are normative literals. A CRLF rewrite breaks those comparisons for a
+# reason that is slow to diagnose.
+* text=auto eol=lf
+
+# Streams and raw video are byte-exact fixtures. Never normalize them.
+*.kfv binary
+*.y4m binary
+
+# Binary — never convert
+*.gif binary
+*.png binary
+*.ico binary
+*.woff2 binary
+*.wasm binary
+*.pdf binary
+*.zip binary

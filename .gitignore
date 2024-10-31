@@ -1,0 +1,16 @@
+/target/
+.DS_Store
+*.log
+inspector/node_modules/
+inspector/dist/
+/artifacts/
+/out/
+
+# Fetched clips. The fetch scripts and their hashes are tracked; the video
+# never is.
+/corpus/clips/
+*.y4m
+
+# Encoder output. Conformance streams and crash regressions are tracked.
+*.kfv
+!conformance/**/*.kfv
