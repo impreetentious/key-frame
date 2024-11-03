@@ -1,0 +1,25 @@
+name: Bug report
+description: Report a reproducible correctness or tooling problem.
+title: "bug: "
+labels: [bug]
+body:
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Include the command, the encoder settings, and the smallest stream or clip that shows the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and observed behavior
+      description: State whether the two decoders disagree, a decode is not bit-exact across platforms, or a malformed stream was not rejected cleanly.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Build or commit
+    validations:
+      required: true
