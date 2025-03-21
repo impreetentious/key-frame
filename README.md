@@ -133,7 +133,7 @@ both decoders.
 
 ## License
 
-Copyright (c) 2024 Sidakpreet Singh.
+Copyright (c) 2024-2025 Sidakpreet Singh.
 
 Key Frame is released under the MIT License — a codec and its bitstream want
 maximum reuse. The complete license text is in [LICENSE](LICENSE); the SPDX
@@ -141,4 +141,4 @@ identifier is `MIT`.
 
 ---
 
-**Version:** v0.0.2
+**Version:** v0.0.3

@@ -1,0 +1,8 @@
+disallowed-types = [
+    { path = "f32", reason = "codec math is integer only; floats belong to the tools and the inspector" },
+    { path = "f64", reason = "codec math is integer only; floats belong to the tools and the inspector" },
+    { path = "std::collections::HashMap", reason = "codec iteration must be ordered; use BTreeMap or Vec" },
+    { path = "std::collections::HashSet", reason = "codec iteration must be ordered; use BTreeSet or Vec" },
+    { path = "std::time::SystemTime", reason = "ambient time is forbidden in deterministic codec code" },
+    { path = "std::time::Instant", reason = "ambient time is forbidden in deterministic codec code" },
+]
