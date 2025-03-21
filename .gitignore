@@ -1,10 +1,14 @@
+# Rust
 /target/
-.DS_Store
-*.log
+
+# Dependencies and web build output
 inspector/node_modules/
 inspector/dist/
+
+# Tests, reports, and local artifacts
 /artifacts/
 /out/
+*.log
 
 # Fetched clips. The fetch scripts and their hashes are tracked; the video
 # never is.
@@ -14,3 +18,9 @@ inspector/dist/
 # Encoder output. Conformance streams and crash regressions are tracked.
 *.kfv
 !conformance/**/*.kfv
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

@@ -123,13 +123,12 @@ shows the machinery that catches it.
   manifest, and how to test a decoder that is not this one
 - [`inspector/README.md`](inspector/README.md) — the projection room
 
-## Contributing
+## Status and contributing
 
-See [the contribution guide](docs/contributing.md), the numbered decisions in
-[`docs/adr/`](docs/adr/), and the pull-request checklist. Every change needs
-tests and a clean local preflight. Anything decodable carries a version: a
-syntax change bumps it, regenerates the oracle vectors, and is reviewed against
-both decoders.
+Key Frame is pre-1.0 while its format and conformance suite are being built.
+The numbered records in [`docs/adr/`](docs/adr/) capture architectural
+decisions. Changes need tests and a clean local preflight; any syntax change
+also bumps the bitstream version and regenerates the oracle vectors.
 
 ## License
 
@@ -141,4 +140,4 @@ identifier is `MIT`.
 
 ---
 
-**Version:** v0.1.0
+**Version:** v0.1.1
