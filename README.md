@@ -141,4 +141,4 @@ identifier is `MIT`.
 
 ---
 
-**Version:** v0.0.3
+**Version:** v0.1.0
