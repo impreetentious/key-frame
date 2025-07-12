@@ -1,0 +1,19 @@
+precision = "quarter_pel"
+phase_numerators = [0, 1, 2, 3]
+phase_denominator = 4
+horizontal_before_vertical = true
+edge_extension_pixels = 64
+fullpel_search_min = -64
+fullpel_search_max = 64
+filter_taps = [1, -5, 20, 20, -5, 1]
+filter_denominator = 32
+single_stage_rounding = 16
+single_stage_shift = 5
+two_stage_rounding = 512
+two_stage_shift = 10
+
+[mv_predictor]
+candidates = ["left", "above", "above_right_else_above_left"]
+unavailable = [0, 0]
+combine = "componentwise_median"
+same_reference_required = true

@@ -1,0 +1,25 @@
+format = "key-frame-spec-assets"
+asset_version = 1
+bitstream_version = 1
+normative = true
+
+required = [
+  "constants.toml",
+  "fields.toml",
+  "contexts.toml",
+  "syntax.toml",
+  "intra.toml",
+  "mc.toml",
+  "deblock.toml",
+  "search.toml",
+  "scans.toml",
+  "transforms.toml",
+  "quant.toml",
+  "costs.toml",
+  "vectors.json",
+]
+
+[rules]
+executable_code = false
+generated_docs = "../../docs/bitstream.md"
+oracle = "../oracle.py"

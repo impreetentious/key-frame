@@ -8,8 +8,9 @@ particular block looks the way it does.
 ## What it does
 
 Key Frame is an original educational video codec under active construction. At
-this version the repository provides the pinned Rust workspace, inert frame
-storage, bit-level I/O, fixed-point helpers, deterministic generator,
+this version the repository provides the pinned Rust workspace, the first
+frozen bitstream field/context assets, inert frame storage, bit-level I/O,
+fixed-point helpers, deterministic generator,
 architecture decision record, and one-command verification harness that later
 codec phases build on.
 
@@ -85,4 +86,4 @@ change also bumps the bitstream version and regenerates independent vectors.
 
 ---
 
-**Version:** v0.2.0
+**Version:** v0.2.1

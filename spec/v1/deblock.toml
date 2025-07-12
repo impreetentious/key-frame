@@ -1,0 +1,50 @@
+strengths = [0, 1, 2]
+edge_kinds = ["coding_block", "derived_transform"]
+qp_average = "(left+right+1)>>1"
+luma_strength_1 = "weak_4_tap"
+luma_strength_2 = "strong_6_tap"
+chroma_strength_1 = "weak_4_tap"
+chroma_strength_2 = "weak_4_tap"
+reference_uses_filtered_frame = true
+
+[[decision]]
+edge_kind = "derived_transform"
+either_intra = false
+either_coded = false
+minimum_qp = 0
+strength = 0
+
+[[decision]]
+edge_kind = "coding_block"
+either_intra = false
+either_coded = false
+minimum_qp = 0
+strength = 1
+
+[[decision]]
+edge_kind = "derived_transform"
+either_intra = false
+either_coded = true
+minimum_qp = 0
+strength = 1
+
+[[decision]]
+edge_kind = "coding_block"
+either_intra = false
+either_coded = true
+minimum_qp = 0
+strength = 1
+
+[[decision]]
+edge_kind = "coding_block"
+either_intra = true
+either_coded = false
+minimum_qp = 0
+strength = 2
+
+[[decision]]
+edge_kind = "coding_block"
+either_intra = true
+either_coded = true
+minimum_qp = 0
+strength = 2

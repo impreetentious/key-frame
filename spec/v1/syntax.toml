@@ -1,0 +1,25 @@
+intra_modes = ["dc", "planar", "horizontal", "vertical", "d45", "d135", "d117", "d153"]
+references = ["last", "golden"]
+planes = ["y", "u", "v"]
+
+[payload]
+superblock_order = "raster"
+partition_order = "top_down"
+coding_block_order = "quadtree_leaf"
+residual_plane_order = "y_u_v"
+transform_order = "raster"
+
+[key_coding_block]
+elements = ["intra_mode", "residual"]
+
+[p_coding_block]
+decision_tree = "skip ? ref_select : is_inter ? ref_select+mvd+residual : intra_mode+residual"
+skip_has_mvd = false
+skip_has_residual = false
+
+[coefficient_block]
+elements = ["has_coeff", "last_x", "last_y", "sig", "gt1", "gt2", "rice_remainder", "nonzero_sign"]
+zero_terminates_after = "has_coeff"
+sign_zero = "positive"
+sign_one = "negative"
+scan = "diagonal"

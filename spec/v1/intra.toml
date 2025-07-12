@@ -1,0 +1,27 @@
+modes = ["dc", "planar", "horizontal", "vertical", "d45", "d135", "d117", "d153"]
+angular_denominator = 32
+angular_rounding_offset = 16
+unavailable_fallback = 128
+sizes = [4, 8, 16, 32, 64]
+
+[dc]
+rule = "rounded_mean_of_available_top_and_left"
+
+[planar]
+rule = "bilinear_corner_blend"
+
+[horizontal]
+rule = "replicate_left"
+
+[vertical]
+rule = "replicate_top"
+
+[angles]
+d45 = 32
+d135 = -32
+d117 = -21
+d153 = -11
+
+[neighbors]
+substitution = "nearest_available_else_128"
+top_right_crosses_superblock = false

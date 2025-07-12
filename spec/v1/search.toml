@@ -1,0 +1,24 @@
+partition_sizes = [64, 32, 16, 8]
+partition_compare = "children_before_parent"
+intra_mode_order = ["dc", "planar", "horizontal", "vertical", "d45", "d135", "d117", "d153"]
+reference_order = ["last", "golden"]
+zero_mv_first = true
+fullpel_pattern = [[0, -1], [-1, 0], [1, 0], [0, 1]]
+fullpel_termination = "best_unchanged_for_full_ring"
+subpel_order = [[0, -1], [-1, -1], [-1, 0], [-1, 1], [0, 1], [1, 1], [1, 0], [1, -1]]
+subpel_rounds = 2
+
+[ties]
+reference = "lower_index"
+mode = "lower_index"
+motion = "zero_then_search_order"
+
+[scene_cut]
+history_capacity = 16
+history_minimum = 4
+trigger = "current>0 && current*count>=3*sum"
+keyframe_clears_history = true
+
+[golden]
+keyframe_installs = true
+counter_resets_on_install = true
