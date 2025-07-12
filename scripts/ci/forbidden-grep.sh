@@ -116,7 +116,7 @@ fi
 # formula and agree perfectly.
 if [[ -f spec/oracle.py ]]; then
   leaks="$(grep -nE '^[[:space:]]*(import|from)[[:space:]]+[A-Za-z_]' spec/oracle.py 2>/dev/null \
-    | grep -vE '[[:space:]](argparse|dataclasses|hashlib|itertools|json|math|os|pathlib|struct|sys|typing)([[:space:].]|$)' \
+    | grep -vE '[[:space:]](argparse|dataclasses|hashlib|itertools|json|math|os|pathlib|re|struct|sys|typing)([[:space:].]|$)' \
     || true)"
   if [[ -n "$leaks" ]]; then
     echo "note: spec/oracle.py imports beyond the standard-library allowlist"
