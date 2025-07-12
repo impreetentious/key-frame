@@ -48,6 +48,19 @@ if (version && has("Cargo.lock")) {
   }
 }
 
+if (has("rust-toolchain.toml")) {
+  const channel = read("rust-toolchain.toml").match(/^channel\s*=\s*"([^"]+)"/m)?.[1];
+  if (!channel || !/^\d+\.\d+\.\d+$/.test(channel)) {
+    errors.push(`rust-toolchain.toml channel ${channel ?? "missing"} is not an exact version`);
+  }
+  if (has(".github/workflows/check.yml")) {
+    const workflow = read(".github/workflows/check.yml");
+    if (/toolchain:\s*(stable|\d)/.test(workflow)) {
+      errors.push("check workflow duplicates the Rust version instead of reading rust-toolchain.toml");
+    }
+  }
+}
+
 if (version && has("inspector/package.json")) {
   const pkg = JSON.parse(read("inspector/package.json"));
   if (pkg.version !== version) {
