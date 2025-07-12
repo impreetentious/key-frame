@@ -8,10 +8,13 @@ particular block looks the way it does.
 ## What it does
 
 Key Frame is an original educational video codec under active construction. At
-this version the repository provides the pinned Rust workspace, architecture
-decision record, integer-only codec boundary, and one-command verification
-harness that later codec phases build on.
+this version the repository provides the pinned Rust workspace, inert frame
+storage, bit-level I/O, fixed-point helpers, deterministic generator,
+architecture decision record, and one-command verification harness that later
+codec phases build on.
 
+- Stores 4:2:0 frames with checked dimensions, strides, indexing, and crop
+  behavior, without placing codec arithmetic in the shared frame crate.
 - Keeps signal-path crates free of floating point, ambient time, unordered
   iteration, filesystem access, and threads.
 - Enforces the independent-decoder dependency boundary before either decoder
@@ -33,7 +36,7 @@ SIMD, threads, containers, network streaming, or GPU acceleration.
 
 ## Limitations
 
-Only the build constitution and workspace boundary exist at this version; no
+The build constitution and core storage/utilities exist at this version; no
 stream can be encoded or decoded yet. Linux x86_64 and macOS arm64 are the
 native targets, WebAssembly will be added with the projection room, and Windows
 is unsupported.
@@ -82,4 +85,4 @@ change also bumps the bitstream version and regenerates independent vectors.
 
 ---
 
-**Version:** v0.1.2
+**Version:** v0.2.0

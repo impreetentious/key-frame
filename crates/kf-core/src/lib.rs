@@ -20,3 +20,13 @@
 //! routine is checked against the independent oracle's vectors rather than
 //! against its own output. A checksum or a bit reader that became the de facto
 //! specification is the one failure this project has decided it must not have.
+
+mod bitio;
+mod error;
+mod fixed;
+mod rng;
+
+pub use bitio::{BitReader, BitWriter};
+pub use error::CoreError;
+pub use fixed::{clamp_u8, rounded_shift_i64};
+pub use rng::Xoshiro256PlusPlus;

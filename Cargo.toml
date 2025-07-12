@@ -2,10 +2,11 @@
 resolver = "3"
 members = [
     "crates/kf-core",
+    "crates/kf-frame",
 ]
 
 [workspace.package]
-version = "0.1.2"
+version = "0.2.0"
 authors = ["Sidakpreet Singh"]
 edition = "2024"
 license = "MIT"
