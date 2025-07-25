@@ -11,12 +11,15 @@ Key Frame is an original educational video codec under active construction. At
 this version the repository provides the pinned Rust workspace, the first
 frozen bitstream field/context/numeric assets, generated decoder-normative
 documentation, independent worked vectors, inert frame storage, bit-level I/O,
-fixed-point helpers, deterministic generator,
+fixed-point helpers, deterministic generator, and the adaptive context bank
+that consumes the frozen Q16 entropy-cost assets.
 architecture decision record, and one-command verification harness that later
 codec phases build on.
 
 - Stores 4:2:0 frames with checked dimensions, strides, indexing, and crop
   behavior, without placing codec arithmetic in the shared frame crate.
+- Carries all 144 adaptive binary contexts with normative floor-division
+  updates and literal modeled-entropy lookup.
 - Keeps signal-path crates free of floating point, ambient time, unordered
   iteration, filesystem access, and threads.
 - Enforces the independent-decoder dependency boundary before either decoder
@@ -89,4 +92,4 @@ change also bumps the bitstream version and regenerates independent vectors.
 
 ---
 
-**Version:** v0.3.0
+**Version:** v0.3.1
