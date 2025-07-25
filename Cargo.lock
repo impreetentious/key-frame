@@ -4,8 +4,12 @@ version = 4
 
 [[package]]
 name = "kf-core"
-version = "0.2.2"
+version = "0.3.0"
 
 [[package]]
 name = "kf-frame"
-version = "0.2.2"
+version = "0.3.0"
+
+[[package]]
+name = "kf-spec"
+version = "0.3.0"

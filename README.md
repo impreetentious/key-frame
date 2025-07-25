@@ -9,8 +9,8 @@ particular block looks the way it does.
 
 Key Frame is an original educational video codec under active construction. At
 this version the repository provides the pinned Rust workspace, the first
-frozen bitstream field/context/numeric assets and independent worked vectors,
-inert frame storage, bit-level I/O,
+frozen bitstream field/context/numeric assets, generated decoder-normative
+documentation, independent worked vectors, inert frame storage, bit-level I/O,
 fixed-point helpers, deterministic generator,
 architecture decision record, and one-command verification harness that later
 codec phases build on.
@@ -21,7 +21,7 @@ codec phases build on.
   iteration, filesystem access, and threads.
 - Enforces the independent-decoder dependency boundary before either decoder
   is implemented.
-- Checks version, documentation, and license coherence in the same preflight
+- Checks version, specification, documentation, and license coherence in the same preflight
   command used by continuous integration.
 
 The finished codec will ship an encoder, two independent decoders, a normative
@@ -49,7 +49,9 @@ Rust 1.87.0 · edition 2024 · Bash · Node.js for repository checks
 
 ## Project docs
 
+- [`docs/bitstream.md`](docs/bitstream.md) is the generated decoder-normative v1 contract.
 - [`docs/adr/`](docs/adr/) records architectural decisions and their tradeoffs.
+- [`spec/`](spec/) contains inert assets, derivation checks, and the independent oracle.
 
 ## Run locally
 
@@ -87,4 +89,4 @@ change also bumps the bitstream version and regenerates independent vectors.
 
 ---
 
-**Version:** v0.2.2
+**Version:** v0.3.0
