@@ -12,7 +12,9 @@ this version the repository provides the pinned Rust workspace, the first
 frozen bitstream field/context/numeric assets, generated decoder-normative
 documentation, independent worked vectors, inert frame storage, bit-level I/O,
 fixed-point helpers, deterministic generator, and the adaptive context bank
-that consumes the frozen Q16 entropy-cost assets.
+that consumes the frozen Q16 entropy-cost assets. The canonical range encoder
+now exposes renormalization and emission-time accounting without claiming
+symbol-level byte ownership.
 architecture decision record, and one-command verification harness that later
 codec phases build on.
 
@@ -92,4 +94,4 @@ change also bumps the bitstream version and regenerates independent vectors.
 
 ---
 
-**Version:** v0.3.1
+**Version:** v0.3.2
