@@ -9,3 +9,7 @@ decoder.
 The inverse is decoder-normative. The forward path is encoder-side and may be
 replaced only when quantization and the closed reconstruction loop remain
 bit-identical.
+
+Flat quantization consumes the 64 literal QP scales. Coded levels are capped at
+magnitude 32767 before dequant multiplication; all products remain i64 until
+the named narrowing point.

@@ -7,6 +7,10 @@ pub enum TransformError {
     WrongLength { expected: usize, actual: usize },
     /// An embedded matrix cannot satisfy the frozen shape.
     InvalidSpecMatrix { size: u8 },
+    /// QP is outside the closed version-one interval.
+    InvalidQp { qp: u8 },
+    /// A coded coefficient exceeds the bitstream magnitude cap.
+    CoefficientMagnitude { level: i32 },
 }
 
 impl fmt::Display for TransformError {
@@ -22,6 +26,13 @@ impl fmt::Display for TransformError {
                 write!(
                     formatter,
                     "embedded {size}x{size} transform matrix is malformed"
+                )
+            }
+            Self::InvalidQp { qp } => write!(formatter, "QP {qp} is outside 0..=63"),
+            Self::CoefficientMagnitude { level } => {
+                write!(
+                    formatter,
+                    "coefficient level {level} exceeds magnitude 32767"
                 )
             }
         }

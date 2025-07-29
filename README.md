@@ -27,6 +27,8 @@ codec phases build on.
   initial probabilities and checks encoder/decoder context lockstep.
 - Applies the literal 4/8/16/32 inverse transform matrices with i64
   accumulation, named rounding shifts, and explicit reconstruction clamps.
+- Provides the reference forward transform plus checked flat quantization and
+  dequantization across the complete QP range.
 - Keeps signal-path crates free of floating point, ambient time, unordered
   iteration, filesystem access, and threads.
 - Enforces the independent-decoder dependency boundary before either decoder
@@ -99,4 +101,4 @@ change also bumps the bitstream version and regenerates independent vectors.
 
 ---
 
-**Version:** v0.4.1
+**Version:** v0.4.2
