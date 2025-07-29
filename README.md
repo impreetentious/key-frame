@@ -25,6 +25,8 @@ codec phases build on.
   updates and literal modeled-entropy lookup.
 - Exhaustively round-trips every 16-bin alphabet word at three representative
   initial probabilities and checks encoder/decoder context lockstep.
+- Applies the literal 4/8/16/32 inverse transform matrices with i64
+  accumulation, named rounding shifts, and explicit reconstruction clamps.
 - Keeps signal-path crates free of floating point, ambient time, unordered
   iteration, filesystem access, and threads.
 - Enforces the independent-decoder dependency boundary before either decoder
@@ -97,4 +99,4 @@ change also bumps the bitstream version and regenerates independent vectors.
 
 ---
 
-**Version:** v0.4.0
+**Version:** v0.4.1
