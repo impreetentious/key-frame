@@ -228,4 +228,4 @@ The SHA-256 values below identify the literal inputs used for this rendering.
 | `syntax.toml` | `92467acd24f90bf69448624f536de514ffcb72849b17be202a5cd8e29e08689a` |
 | `transform-vectors.toml` | `c7d775b5895a34e9865f358feccd5db1a1fd969ed8b79fb33de95581e66e2786` |
 | `transforms.toml` | `32be222922aa6e454d843786d1b3d4f0e21a6cfba756b46b9efd2a766e187910` |
-| `vectors.json` | `025c5100a0df633cb82f18de98d0f70f8b9c50e336e539556280462f870dd5f4` |
+| `vectors.json` | `4ffa43d95a72bee5ce0b333d8cc25789dcad453fdcd037cccab121c737b7255d` |

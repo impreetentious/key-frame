@@ -1,61 +1,66 @@
 # Key Frame
 
-Video codecs combine prediction, transforms, quantization, entropy coding, and
-stateful reconstruction behind an output that reveals almost none of those
-decisions. That makes it difficult to learn how a codec works or verify why a
-particular block looks the way it does.
+A video codec decides, for every block of every frame, how to predict it, how to
+transform whatever the prediction missed, and how many bits that decision costs.
+The compressed file records none of that reasoning. Anyone asking why a
+particular block looks the way it does is left reading a production codebase
+where the answer is spread across a million lines written for speed.
 
 ## What it does
 
-Key Frame is an original educational video codec under active construction. At
-this version the repository provides the pinned Rust workspace, the first
-frozen bitstream field/context/numeric assets, generated decoder-normative
-documentation, independent worked vectors, inert frame storage, bit-level I/O,
-fixed-point helpers, deterministic generator, and the adaptive context bank
-that consumes the frozen Q16 entropy-cost assets. The canonical range encoder
-and bounds-checked decoder replay the independent vectors; encoder
-instrumentation exposes renormalization and emission-time accounting without
-claiming symbol-level byte ownership.
-architecture decision record, and one-command verification harness that later
-codec phases build on.
+Key Frame is an original video codec written to be read. It compresses 8-bit
+4:2:0 video into a small, completely specified bitstream, then decodes that
+bitstream twice — once with a fast production decoder and once with a
+deliberately naive reference decoder written independently against the
+specification. Every gate in the repository exists to prove the two agree.
 
-- Stores 4:2:0 frames with checked dimensions, strides, indexing, and crop
-  behavior, without placing codec arithmetic in the shared frame crate.
-- Carries all 144 adaptive binary contexts with normative floor-division
-  updates and literal modeled-entropy lookup.
-- Exhaustively round-trips every 16-bin alphabet word at three representative
-  initial probabilities and checks encoder/decoder context lockstep.
-- Applies the literal 4/8/16/32 inverse transform matrices with i64
-  accumulation, named rounding shifts, and explicit reconstruction clamps.
-- Provides the reference forward transform plus checked flat quantization and
-  dequantization across the complete QP range.
-- Replays 24 literal inverse-transform vectors spanning zeros, DC, impulse,
-  alternating extremes, and both coefficient caps.
-- Keeps signal-path crates free of floating point, ambient time, unordered
-  iteration, filesystem access, and threads.
-- Enforces the independent-decoder dependency boundary before either decoder
-  is implemented.
-- Checks version, specification, documentation, and license coherence in the same preflight
-  command used by continuous integration.
-
-The finished codec will ship an encoder, two independent decoders, a normative
-bitstream specification with an independent oracle, command-line tools, and a
-browser projection room driven by the real WebAssembly decoder. Those surfaces
-are not represented as available before their end-to-end gates pass.
+- Encodes and decodes progressive 8-bit 4:2:0 `C420jpeg` Y4M at even dimensions
+  from 64×64 to 4096×2304, padding internally to the superblock grid and
+  cropping on output.
+- Partitions each 64×64 superblock by quadtree down to 8×8, choosing splits and
+  modes by closed-loop rate–distortion search over a frozen candidate order.
+- Predicts key frames from eight intra modes, and predicts P-frames from LAST
+  and GOLDEN references with quarter-pixel six-tap motion compensation, median
+  motion-vector prediction, and reference-selecting skip.
+- Codes the residual with literal 4/8/16/32 integer transforms and flat
+  quantization across the full 64-step QP range.
+- Entropy-codes every symbol through an adaptive binary range coder over a
+  closed set of 144 contexts, with modeled-entropy costs the encoder reuses for
+  its own decisions.
+- Frames the stream in sync-marked packets carrying independent header and
+  payload CRC32C, resynchronizes byte-by-byte after damage, and installs a
+  decoded frame into the reference state only on complete success.
+- Ships `kfenc`, `kfdec`, and `kfprobe`: encode, decode, and turn any stream
+  into schema-validated per-block JSON with byte accounting that reconciles
+  against a canonical replay of the payload.
+- Derives its normative document, its numeric tables, and its test vectors from
+  the same literal frozen assets, so the specification and the implementation
+  cannot drift apart silently.
+- Keeps the entire signal path integer-only: no floating point, no unordered
+  iteration, no ambient clocks, no filesystem, no threads.
+- Verifies itself with one command that runs every gate continuous integration
+  runs, in the same order.
 
 ## What it is not
 
-Key Frame is not an implementation of H.264, HEVC, VP9, AV1, or another
-standardized format. Its bitstream is original and intentionally small enough
-to explain completely. Version one does not include B-frames, 10-bit video,
-SIMD, threads, containers, network streaming, or GPU acceleration.
+Key Frame is not an implementation of H.264, HEVC, VP9, AV1, or any other
+standardized format, and it does not read or write their files. Its bitstream is
+original and deliberately small enough to explain in full. It is not a
+performance project: version one has no B-frames, no 10-bit support, no SIMD, no
+threading, no container format, no network streaming, and no GPU path.
 
 ## Limitations
 
-The build constitution and core storage/utilities exist at this version; no
-stream can be encoded or decoded yet. Linux x86_64 and macOS arm64 are the
-native targets, WebAssembly will be added with the projection room, and Windows
-is unsupported.
+The bitstream is original, so nothing else decodes a `.kfv` file. Compression
+efficiency is not competitive with production codecs and is never presented as
+if it were; every published rate–distortion number is self-measured on a named
+corpus with the encoder build that produced it. The encoder is scalar,
+single-threaded, and constant-QP — it optimizes for a decision you can follow
+rather than for speed or for a bitrate target. Damage handling is limited to
+detection and dependency invalidation: a corrupt frame is never concealed,
+never partially applied, and never allowed into later prediction, but nothing is
+reconstructed from it either. Linux x86_64 and macOS arm64 are the supported
+native targets; Windows is not supported.
 
 ## Stack
 
@@ -63,39 +68,55 @@ Rust 1.87.0 · edition 2024 · Bash · Node.js for repository checks
 
 ## Project docs
 
-- [`docs/bitstream.md`](docs/bitstream.md) is the generated decoder-normative v1 contract.
-- [`docs/adr/`](docs/adr/) records architectural decisions and their tradeoffs.
-- [`spec/`](spec/) contains inert assets, derivation checks, and the independent oracle.
+- [`docs/bitstream.md`](docs/bitstream.md) is the decoder-normative v1 contract,
+  generated from the frozen specification assets.
+- [`docs/adr/`](docs/adr/) records every architectural decision, the alternatives
+  weighed, and the consequences accepted.
+- [`spec/`](spec/) holds the literal assets, their derivation checks, and an
+  independent standard-library oracle that authors test vectors without the
+  Rust implementation.
 
 ## Run locally
 
-Install Rust 1.87.0 (the repository pin selects it automatically) and a current
-Node.js LTS release, then run:
+Install Rust 1.87.0 — the repository pin selects it automatically — and a
+current Node.js LTS release. Encode, decode, and inspect an 8-bit 4:2:0 input:
 
 ```sh
-./scripts/preflight.sh
+cargo run --release -p kf-tools --bin kfenc -- \
+  --input input.y4m --qp 32 --output output.kfv
+cargo run --release -p kf-tools --bin kfdec -- \
+  output.kfv --output decoded.y4m
+cargo run --release -p kf-tools --bin kfprobe -- output.kfv
 ```
 
 ## Verify
 
-The same command runs every required local and CI gate:
+One command runs every gate, in the order continuous integration runs them:
 
 ```sh
 ./scripts/preflight.sh
 ```
 
+It checks version, documentation, license, and specification coherence, then the
+range-coder, transform, bitstream, syntax, reference-decoder, probe, intra,
+conformance, and inter gates, then formatting, lints, the forbidden-API and
+decoder-boundary scan, the full test suite, and the documentation build.
+
 ## Build and deploy
 
-The workspace currently builds as Rust libraries with `cargo build
---workspace`. The static inspector deployment arrives only after live native
-and WebAssembly decodes are bit-identical.
+The workspace builds as Rust libraries and command-line binaries with `cargo
+build --workspace`. Continuous integration additionally reproduces every
+committed conformance stream and decoded hash on both supported native targets
+and requires them to be byte-identical.
 
 ## Status and contributing
 
-Key Frame is pre-1.0 while its bitstream and conformance suite are being built.
-The numbered records in [`docs/adr/`](docs/adr/) are append-only. Every change
-must add tests for touched failure modes and leave preflight green. A syntax
-change also bumps the bitstream version and regenerates independent vectors.
+Key Frame is pre-1.0 and single-maintainer. The bitstream version is a separate
+contract from the repository version: a syntax change requires an architectural
+decision record, a bitstream-version bump, regenerated independent vectors, and
+review of both decoder implementations. Records in [`docs/adr/`](docs/adr/) are
+append-only. Every change adds tests for the failure modes it touches and leaves
+preflight green.
 
 ## License
 
@@ -103,4 +124,4 @@ change also bumps the bitstream version and regenerates independent vectors.
 
 ---
 
-**Version:** v0.5.0
+**Version:** v0.5.1

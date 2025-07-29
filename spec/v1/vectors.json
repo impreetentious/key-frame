@@ -18,6 +18,13 @@
     }
   ],
   "format": "key-frame-oracle-v1",
+  "packet": {
+    "complete_packet_hex": "4b46503105000000000000000720000073729227357672450000000000",
+    "header_crc32c": "27927273",
+    "name": "key_index0_qp32_zero_payload",
+    "payload_crc32c": "45727635",
+    "payload_hex": "0000000000"
+  },
   "range": [
     {
       "bypass_positions": [],
@@ -299,5 +306,53 @@
         1
       ]
     }
-  ]
+  ],
+  "syntax": {
+    "bins": [
+      {
+        "context": 0,
+        "symbol": 0
+      },
+      {
+        "context": 18,
+        "symbol": 0
+      },
+      {
+        "context": 21,
+        "symbol": 0
+      },
+      {
+        "context": 22,
+        "symbol": 0
+      },
+      {
+        "context": 39,
+        "symbol": 0
+      },
+      {
+        "context": 39,
+        "symbol": 0
+      },
+      {
+        "context": 39,
+        "symbol": 0
+      },
+      {
+        "context": 39,
+        "symbol": 0
+      },
+      {
+        "context": 43,
+        "symbol": 0
+      },
+      {
+        "context": 43,
+        "symbol": 0
+      }
+    ],
+    "complete_stream_hex": "4b465631010040004000010818000100780010000e72b95d4b465031060000000000000007200000230e00748a7c2a57000000000000",
+    "decoded_yuv_sha256": "cb11e05cb5da949c0e0f5b5a7cb310df35a96a22c45d1ada70d950859fe697d1",
+    "name": "intra64_dc_all_zero",
+    "payload_hex": "000000000000"
+  }
 }

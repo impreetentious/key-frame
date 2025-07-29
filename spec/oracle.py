@@ -2,6 +2,7 @@
 """Independent standard-library oracle for Key Frame v1 worked vectors."""
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -126,6 +127,20 @@ def build_vectors():
     sequence.extend(bytes((16, 0)))
     sequence_crc = crc32c(sequence)
 
+    payload = bytes((0, 0, 0, 0, 0))
+    packet_prefix = bytearray()
+    packet_prefix.extend(little(len(payload), 4))
+    packet_prefix.extend(little(0, 4))
+    packet_prefix.extend(bytes((0b00000111, 32)))
+    packet_prefix.extend(little(0, 2))
+    packet_header_crc = crc32c(packet_prefix)
+    packet = bytearray()
+    packet.extend(scalar(fields_path, "sync_ascii").encode("ascii"))
+    packet.extend(packet_prefix)
+    packet.extend(little(packet_header_crc, 4))
+    packet.extend(little(crc32c(payload), 4))
+    packet.extend(payload)
+
     ranges = [
         range_vector("all_zero", [0] * 24, 2048, [], constants),
         range_vector("all_one", [1] * 24, 2048, [], constants),
@@ -134,8 +149,46 @@ def build_vectors():
         range_vector("bypass_no_adaptation", [0, 1] * 20, 1234, list(range(40)), constants),
         range_vector("carry_cascade", [1] * 9 + [0] * 3 + [1] * 21, 4095, [], constants),
     ]
+    syntax_bins = [
+        (0, 0),
+        (18, 0),
+        (21, 0),
+        (22, 0),
+        (39, 0),
+        (39, 0),
+        (39, 0),
+        (39, 0),
+        (43, 0),
+        (43, 0),
+    ]
+    syntax_encoder = RangeEncoder(constants["range_initial"], constants["range_top"])
+    syntax_contexts = {}
+    for context_id, symbol in syntax_bins:
+        p1 = syntax_contexts.get(context_id, 2048)
+        syntax_encoder.encode(symbol, p1)
+        syntax_contexts[context_id] = adapt(p1, symbol)
+    syntax_payload = syntax_encoder.finish()
+    syntax_prefix = bytearray()
+    syntax_prefix.extend(little(len(syntax_payload), 4))
+    syntax_prefix.extend(little(0, 4))
+    syntax_prefix.extend(bytes((0b00000111, 32)))
+    syntax_prefix.extend(little(0, 2))
+    syntax_packet = bytearray()
+    syntax_packet.extend(scalar(fields_path, "sync_ascii").encode("ascii"))
+    syntax_packet.extend(syntax_prefix)
+    syntax_packet.extend(little(crc32c(syntax_prefix), 4))
+    syntax_packet.extend(little(crc32c(syntax_payload), 4))
+    syntax_packet.extend(syntax_payload)
+    neutral_yuv = bytes((128,)) * (64 * 64 + 32 * 32 * 2)
     return {
         "format": "key-frame-oracle-v1",
+        "packet": {
+            "name": "key_index0_qp32_zero_payload",
+            "payload_hex": payload.hex(),
+            "header_crc32c": "%08x" % packet_header_crc,
+            "payload_crc32c": "%08x" % crc32c(payload),
+            "complete_packet_hex": bytes(packet).hex(),
+        },
         "crc32c": [
             {"name": "empty", "input_hex": "", "crc32c": "00000000"},
             {
@@ -151,6 +204,18 @@ def build_vectors():
             },
         ],
         "range": ranges,
+        "syntax": {
+            "name": "intra64_dc_all_zero",
+            "bins": [
+                {"context": context_id, "symbol": symbol}
+                for context_id, symbol in syntax_bins
+            ],
+            "payload_hex": syntax_payload.hex(),
+            "complete_stream_hex": (
+                bytes(sequence) + little(sequence_crc, 4) + bytes(syntax_packet)
+            ).hex(),
+            "decoded_yuv_sha256": hashlib.sha256(neutral_yuv).hexdigest(),
+        },
     }
 
 

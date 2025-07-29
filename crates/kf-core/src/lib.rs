@@ -22,11 +22,13 @@
 //! specification is the one failure this project has decided it must not have.
 
 mod bitio;
+mod crc32c;
 mod error;
 mod fixed;
 mod rng;
 
 pub use bitio::{BitReader, BitWriter};
+pub use crc32c::crc32c;
 pub use error::CoreError;
 pub use fixed::{clamp_u8, rounded_shift_i64};
 pub use rng::Xoshiro256PlusPlus;
