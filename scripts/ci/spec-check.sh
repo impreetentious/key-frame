@@ -8,6 +8,7 @@ cd "$root_dir"
 python3 spec/check_assets.py
 python3 spec/oracle.py --check
 python3 spec/generate_docs.py --check
+python3 spec/mutation_check.py
 
 hits="$(grep -rniE --include='*.md' --include='*.toml' \
   '\b(TODO|TBD|FIXME|placeholder|to be decided)\b|exact table|per the table' \
@@ -23,4 +24,4 @@ if grep -rnE --include='*.rs' '\b(fn|impl)[[:space:]<(]' crates/kf-spec/src/ >/d
   exit 1
 fi
 
-echo "spec-check: OK — F0 assets, oracle, generated document, and inert boundary"
+echo "spec-check: OK — frozen assets, oracle, generated document, mutation rejection, and inert boundary"

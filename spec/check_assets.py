@@ -26,6 +26,15 @@ def rounded(value):
     return int(math.floor(value + 0.5))
 
 
+def scalar_int(path, key):
+    """Reads a declared integer scalar so it can be checked, not just rendered."""
+    text = path.read_text(encoding="utf-8")
+    match = re.search(r"^%s\s*=\s*(-?\d+)\s*$" % re.escape(key), text, re.MULTILINE)
+    if not match:
+        return None
+    return int(match.group(1))
+
+
 def expected_matrix(size):
     result = []
     for frequency in range(size):
@@ -71,10 +80,23 @@ def main():
         suffix_count += len(ast.literal_eval(match.group(1)))
     if ids != list(range(144)):
         errors.append("contexts.toml ids must be the contiguous stable range 0..143")
+    # The declared count is normative prose everywhere else in the repository.
+    # If nothing compares it to the enumerated ids it is decoration, and a
+    # mutation to it survives every gate but the document hash.
+    if scalar_int(V1 / "contexts.toml", "count") != len(ids):
+        errors.append("contexts.toml count disagrees with the enumerated ids")
     if len(initials) != 144 or not all(1 <= value <= 4095 for value in initials):
         errors.append("contexts.toml must contain 144 legal p1 initials")
     if suffix_count != 144:
         errors.append("contexts.toml must contain 144 stable name suffixes")
+
+    # The matrices below are derived from first principles rather than from the
+    # asset's own scalars, so the declared scalars need their own comparison or
+    # they are unverified normative text.
+    if scalar_int(V1 / "transforms.toml", "dc_scale") != 64:
+        errors.append("transforms.toml dc_scale differs from the reviewed derivation")
+    if scalar_int(V1 / "transforms.toml", "coefficient_scale_bits") != 7:
+        errors.append("transforms.toml coefficient_scale_bits differs from the reviewed derivation")
 
     for size in (4, 8, 16, 32):
         if array(V1 / "transforms.toml", "n%d" % size) != expected_matrix(size):

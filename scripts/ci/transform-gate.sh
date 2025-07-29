@@ -8,4 +8,4 @@ cd "$root_dir"
 python3 spec/check_assets.py
 cargo test --locked -p kf-transform
 
-echo "transform-gate: OK — 24 literal vectors, stage extremes, quant caps, and QP bounds"
+echo "transform-gate: OK — 24 literal vectors, stage extremes, stage widths, quant caps, and QP bounds"

@@ -1,8 +1,9 @@
-# ADR-0002: F0 worked-vector augmentation
+# ADR-0002: Worked-vector augmentation
 
 ## Context
 
-F0 froze transform matrices, stage widths, shifts, clamps, and the independent
+The specification freeze fixed transform matrices, stage widths, shifts,
+clamps, and the independent
 range/CRC vectors. The first inverse-transform implementation exposed a
 verification gap: the numeric semantics were frozen, but their required
 impulse, DC, and extreme worked examples had not been materialized as a
@@ -18,7 +19,7 @@ by `kf-transform`, and included in generated-document inventory hashes.
 
 ## Consequences
 
-G2 can prove the implementation against literal expected outputs instead of
+The transform gate can prove the implementation against literal expected outputs instead of
 testing only self-consistency. Future changes to a matrix, shift, or clamp now
 fail in the asset derivation, Rust replay, and generated-document drift gates.
 Any change to those semantics still requires a bitstream-version decision.
@@ -32,4 +33,4 @@ Any change to those semantics still requires a bitstream-version decision.
 
 ## Supersedes / superseded by
 
-Extends the F0 verification consequences of [ADR-0001](0001-foundation-decisions.md).
+Extends the verification consequences of [ADR-0001](0001-foundation-decisions.md).

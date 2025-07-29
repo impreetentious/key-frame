@@ -206,7 +206,7 @@ noncanonical accepted tails remain unattributed.
 
 | Bitstream | Status | Change |
 | ---: | --- | --- |
-| 1 | frozen at F0 | Initial 8-bit 4:2:0 contract |
+| 1 | frozen | Initial 8-bit 4:2:0 contract |
 
 ## 14. Frozen asset inventory
 
