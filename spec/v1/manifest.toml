@@ -16,6 +16,7 @@ required = [
   "transforms.toml",
   "quant.toml",
   "costs.toml",
+  "transform-vectors.toml",
   "vectors.json",
 ]
 

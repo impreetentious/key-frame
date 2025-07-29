@@ -58,6 +58,10 @@ pub const V1_ASSETS: &[Asset] = &[
         contents: include_str!("../../../spec/v1/costs.toml"),
     },
     Asset {
+        name: "transform-vectors.toml",
+        contents: include_str!("../../../spec/v1/transform-vectors.toml"),
+    },
+    Asset {
         name: "vectors.json",
         contents: include_str!("../../../spec/v1/vectors.json"),
     },

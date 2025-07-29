@@ -29,6 +29,8 @@ codec phases build on.
   accumulation, named rounding shifts, and explicit reconstruction clamps.
 - Provides the reference forward transform plus checked flat quantization and
   dequantization across the complete QP range.
+- Replays 24 literal inverse-transform vectors spanning zeros, DC, impulse,
+  alternating extremes, and both coefficient caps.
 - Keeps signal-path crates free of floating point, ambient time, unordered
   iteration, filesystem access, and threads.
 - Enforces the independent-decoder dependency boundary before either decoder
@@ -101,4 +103,4 @@ change also bumps the bitstream version and regenerates independent vectors.
 
 ---
 
-**Version:** v0.4.2
+**Version:** v0.5.0

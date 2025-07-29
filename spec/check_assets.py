@@ -52,7 +52,8 @@ def main():
     required = [
         "constants.toml", "fields.toml", "contexts.toml", "syntax.toml",
         "intra.toml", "mc.toml", "deblock.toml", "search.toml", "scans.toml",
-        "transforms.toml", "quant.toml", "costs.toml", "vectors.json",
+        "transforms.toml", "quant.toml", "costs.toml", "transform-vectors.toml",
+        "vectors.json",
     ]
     for name in required:
         if not (V1 / name).is_file():
@@ -81,6 +82,39 @@ def main():
         scan = array(V1 / "scans.toml", "n%d" % size)
         if scan != expected_scan(size) or len(scan) != size * size * 2:
             errors.append("scans.toml n%d is not the complete diagonal coordinate table" % size)
+
+    def rounded_shift(value, shift):
+        bias = 1 << (shift - 1)
+        return (value + bias) >> shift if value >= 0 else -((abs(value) + bias) >> shift)
+
+    def inverse_vector(coefficients, size):
+        matrix = expected_matrix(size)
+        horizontal = [0] * (size * size)
+        for fy in range(size):
+            for x in range(size):
+                total = sum(coefficients[fy * size + fx] * matrix[fx * size + x] for fx in range(size))
+                horizontal[fy * size + x] = max(-(1 << 31), min((1 << 31) - 1, rounded_shift(total, 7)))
+        shift = {4: 11, 8: 10, 16: 9, 32: 8}[size]
+        output = [0] * (size * size)
+        for y in range(size):
+            for x in range(size):
+                total = sum(horizontal[fy * size + x] * matrix[fy * size + y] for fy in range(size))
+                output[y * size + x] = max(-32768, min(32767, rounded_shift(total, shift)))
+        return output
+
+    vector_text = (V1 / "transform-vectors.toml").read_text(encoding="utf-8")
+    vector_cases = re.findall(
+        r'\[\[cases\]\]\nname = "([^"]+)"\nsize = (\d+)\ninput = (\[.*\])\nexpected = (\[.*\])',
+        vector_text,
+    )
+    if len(vector_cases) != 24:
+        errors.append("transform-vectors.toml must contain 24 reviewed cases")
+    for name, size_text, inputs_text, expected_text in vector_cases:
+        size = int(size_text)
+        inputs = ast.literal_eval(inputs_text)
+        expected = ast.literal_eval(expected_text)
+        if len(inputs) != size * size or expected != inverse_vector(inputs, size):
+            errors.append("transform vector %s differs from the literal matrix path" % name)
 
     qscale = [rounded(2 ** (qp / 6.0 + 4)) for qp in range(64)]
     lambda_q8 = [rounded(0.57 * 2 ** ((qp - 12) / 3.0) * 256) for qp in range(64)]

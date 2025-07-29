@@ -220,11 +220,12 @@ The SHA-256 values below identify the literal inputs used for this rendering.
 | `deblock.toml` | `cbf282fdbe220f3f0bad92abfc331b3e35124a6b6e20d9f337d8660e26bcec5a` |
 | `fields.toml` | `43f34961d982ae143e39ce586577f00933e49953f21ee8e808537f410c46b0fc` |
 | `intra.toml` | `806381ebe7948c9d473284ed00c9b66e2a53d6f3e4339407d0eb43c10f090ac4` |
-| `manifest.toml` | `0de895b70c71da3eaa316df7357930507b6349bfd89f5e70f2bd48c288991b87` |
+| `manifest.toml` | `a35f272d672849c5eb429eac05259430e2ff6eede10df847271bb3d14646e431` |
 | `mc.toml` | `a3dba431b9dcf8a4cfa0d0593dbed1c127314b4f3e1b296eab4af36832e534b9` |
 | `quant.toml` | `17432a941a4e1bd0beb6730139fd803097c0a15b863db37c18f46b07d1ad0f11` |
 | `scans.toml` | `231a562dfbc01351511587be5a201bff1907168b670580bd8967a6551923fb78` |
 | `search.toml` | `fc54535e12f2ba02ddb0be0abb865c0e7c791ec43b3b854e49849ca716ee7f69` |
 | `syntax.toml` | `92467acd24f90bf69448624f536de514ffcb72849b17be202a5cd8e29e08689a` |
+| `transform-vectors.toml` | `c7d775b5895a34e9865f358feccd5db1a1fd969ed8b79fb33de95581e66e2786` |
 | `transforms.toml` | `32be222922aa6e454d843786d1b3d4f0e21a6cfba756b46b9efd2a766e187910` |
 | `vectors.json` | `025c5100a0df633cb82f18de98d0f70f8b9c50e336e539556280462f870dd5f4` |

@@ -18,6 +18,7 @@ fn frozen_asset_names_are_complete_and_stable() {
             "transforms.toml",
             "quant.toml",
             "costs.toml",
+            "transform-vectors.toml",
             "vectors.json",
         ]
     );
