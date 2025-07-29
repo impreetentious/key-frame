@@ -9,6 +9,8 @@ pub enum RangeError {
     InvalidContext { id: u16 },
     /// An embedded normative table cannot satisfy its frozen shape.
     InvalidSpecAsset { asset: &'static str },
+    /// Decoder initialization or renormalization reached the payload bound.
+    EndOfInput { byte_offset: u32 },
 }
 
 impl fmt::Display for RangeError {
@@ -20,6 +22,9 @@ impl fmt::Display for RangeError {
             Self::InvalidContext { id } => write!(formatter, "context id {id} is outside 0..144"),
             Self::InvalidSpecAsset { asset } => {
                 write!(formatter, "embedded normative asset {asset} is malformed")
+            }
+            Self::EndOfInput { byte_offset } => {
+                write!(formatter, "range payload ended at byte {byte_offset}")
             }
         }
     }
