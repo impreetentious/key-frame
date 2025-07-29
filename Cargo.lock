@@ -4,19 +4,19 @@ version = 4
 
 [[package]]
 name = "kf-core"
-version = "0.3.3"
+version = "0.4.0"
 
 [[package]]
 name = "kf-frame"
-version = "0.3.3"
+version = "0.4.0"
 
 [[package]]
 name = "kf-range"
-version = "0.3.3"
+version = "0.4.0"
 dependencies = [
  "kf-spec",
 ]
 
 [[package]]
 name = "kf-spec"
-version = "0.3.3"
+version = "0.4.0"

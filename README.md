@@ -23,6 +23,8 @@ codec phases build on.
   behavior, without placing codec arithmetic in the shared frame crate.
 - Carries all 144 adaptive binary contexts with normative floor-division
   updates and literal modeled-entropy lookup.
+- Exhaustively round-trips every 16-bin alphabet word at three representative
+  initial probabilities and checks encoder/decoder context lockstep.
 - Keeps signal-path crates free of floating point, ambient time, unordered
   iteration, filesystem access, and threads.
 - Enforces the independent-decoder dependency boundary before either decoder
@@ -95,4 +97,4 @@ change also bumps the bitstream version and regenerates independent vectors.
 
 ---
 
-**Version:** v0.3.3
+**Version:** v0.4.0

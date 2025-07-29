@@ -9,22 +9,24 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
-echo "[1/9] version coherence"
+echo "[1/10] version coherence"
 node "$repo_root/scripts/check-version-coherence.mjs"
-echo "[2/9] documentation coherence"
+echo "[2/10] documentation coherence"
 "$repo_root/scripts/ci/doc-coherence.sh"
-echo "[3/9] license coherence"
+echo "[3/10] license coherence"
 "$repo_root/scripts/ci/license-coherence.sh"
-echo "[4/9] specification closure"
+echo "[4/10] specification closure"
 "$repo_root/scripts/ci/spec-check.sh"
-echo "[5/9] cargo fmt"
+echo "[5/10] range-coder gate"
+"$repo_root/scripts/ci/range-gate.sh"
+echo "[6/10] cargo fmt"
 cargo fmt --all -- --check
-echo "[6/9] cargo clippy"
+echo "[7/10] cargo clippy"
 cargo clippy --locked --workspace --all-targets -- -D warnings
-echo "[7/9] forbidden API scan and decoder boundary"
+echo "[8/10] forbidden API scan and decoder boundary"
 "$repo_root/scripts/ci/forbidden-grep.sh"
-echo "[8/9] tests"
+echo "[9/10] tests"
 cargo test --locked --workspace --all-targets
-echo "[9/9] rustdoc"
+echo "[10/10] rustdoc"
 cargo doc --locked --workspace --no-deps
 echo "preflight: PASS"
