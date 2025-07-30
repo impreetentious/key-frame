@@ -40,6 +40,12 @@ impl RangeEncoder {
         }
     }
 
+    /// Current temporal/accounting snapshot before finalization.
+    #[must_use]
+    pub const fn stats(&self) -> &RangeStats {
+        &self.stats
+    }
+
     /// Encodes and then adapts one context-coded bin.
     pub fn encode_context(
         &mut self,
