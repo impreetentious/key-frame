@@ -1,0 +1,21 @@
+[package]
+name = "kf-enc"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+kf-bitstream = { path = "../kf-bitstream" }
+kf-frame = { path = "../kf-frame" }
+kf-predict = { path = "../kf-predict" }
+kf-range = { path = "../kf-range" }
+kf-transform = { path = "../kf-transform" }
+
+[dev-dependencies]
+kf-dec = { path = "../kf-dec" }
+kf-ref = { path = "../kf-ref" }
+
+[lints]
+workspace = true

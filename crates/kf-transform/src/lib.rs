@@ -12,4 +12,4 @@ pub use error::TransformError;
 pub use forward::forward_transform;
 pub use inverse::inverse_transform;
 pub use matrix::TransformSize;
-pub use quant::{dequantize, dequantize_block, quantize, quantize_block};
+pub use quant::{dequantize, dequantize_block, lambda_q8, quantize, quantize_block};

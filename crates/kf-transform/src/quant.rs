@@ -41,6 +41,14 @@ pub fn dequantize_block(levels: &[i32], qp: u8) -> Result<Vec<i32>, TransformErr
     levels.iter().map(|&level| dequantize(level, qp)).collect()
 }
 
+/// Returns the frozen Q8 Lagrange multiplier for encoder mode decisions.
+pub fn lambda_q8(qp: u8) -> Result<u32, TransformError> {
+    lambdas()
+        .get(usize::from(qp))
+        .copied()
+        .ok_or(TransformError::InvalidQp { qp })
+}
+
 fn scale(qp: u8) -> Result<i32, TransformError> {
     qscales()
         .get(usize::from(qp))
@@ -85,6 +93,42 @@ fn qscales() -> &'static [i32] {
         .as_slice()
 }
 
+fn lambdas() -> &'static [u32] {
+    static LAMBDAS: OnceLock<Vec<u32>> = OnceLock::new();
+    LAMBDAS.get_or_init(|| parse_array("lambda_q8")).as_slice()
+}
+
+fn parse_array(key: &str) -> Vec<u32> {
+    let asset = V1_ASSETS
+        .iter()
+        .find(|asset| asset.name == "quant.toml")
+        .expect("invariant: kf-spec exposes quant.toml");
+    let prefix = format!("{key} = [");
+    let line = asset
+        .contents
+        .lines()
+        .find(|line| line.starts_with(&prefix))
+        .expect("invariant: checked quant asset contains requested array");
+    let values: Vec<u32> = line
+        .strip_prefix(&prefix)
+        .and_then(|value| value.strip_suffix(']'))
+        .expect("invariant: checked quant array has balanced brackets")
+        .split(',')
+        .map(|value| {
+            value
+                .trim()
+                .parse::<u32>()
+                .expect("invariant: checked quant array value is u32")
+        })
+        .collect();
+    assert_eq!(
+        values.len(),
+        64,
+        "invariant: quant array has one row per QP"
+    );
+    values
+}
+
 #[cfg(test)]
 mod tests {
     use super::{dequantize, quantize};
@@ -95,5 +139,12 @@ mod tests {
             assert_eq!(quantize(0, qp).unwrap(), 0);
             assert_eq!(dequantize(0, qp).unwrap(), 0);
         }
+    }
+
+    #[test]
+    fn lambda_table_covers_every_qp() {
+        assert_eq!(super::lambda_q8(0).unwrap(), 9);
+        assert_eq!(super::lambda_q8(63).unwrap(), 19_126_026);
+        assert!(super::lambda_q8(64).is_err());
     }
 }
