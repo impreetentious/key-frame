@@ -4,6 +4,7 @@ members = [
     "crates/kf-bitstream",
     "crates/kf-core",
     "crates/kf-frame",
+    "crates/kf-predict",
     "crates/kf-range",
     "crates/kf-ref",
     "crates/kf-spec",
@@ -11,7 +12,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.5.7"
+version = "0.5.8"
 authors = ["Sidakpreet Singh"]
 edition = "2024"
 license = "MIT"
