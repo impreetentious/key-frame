@@ -1,0 +1,18 @@
+[package]
+name = "kf-tools"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+kf-bitstream = { path = "../kf-bitstream" }
+kf-dec = { path = "../kf-dec" }
+kf-enc = { path = "../kf-enc" }
+kf-frame = { path = "../kf-frame" }
+kf-range = { path = "../kf-range" }
+kf-ref = { path = "../kf-ref" }
+
+[lints]
+workspace = true
