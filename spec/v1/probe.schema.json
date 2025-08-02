@@ -1,0 +1,203 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://key-frame.dev/schema/probe-v1.json",
+  "title": "Key Frame probe report v1",
+  "description": "Frozen inspector wire format. All emitted-byte fields are canonical encoder-replay timing buckets, never symbol or block ownership. Across one frame, the coding-block buckets plus superblock-structure buckets plus frame_flush_bytes equal canonical_replay_payload_len. That sum equals input_payload_len only when canonical_payload_match is true; unmatched input bytes have no attributed owner.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["probe_version", "stream", "frame"],
+  "properties": {
+    "probe_version": { "const": 1 },
+    "stream": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bitstream_version", "width", "height", "chroma", "depth"],
+      "properties": {
+        "bitstream_version": { "const": 1 },
+        "width": { "type": "integer", "minimum": 64, "maximum": 4096 },
+        "height": { "type": "integer", "minimum": 64, "maximum": 2304 },
+        "chroma": { "const": "420jpeg" },
+        "depth": { "const": 8 }
+      }
+    },
+    "frame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "frame_index",
+        "flags",
+        "qp",
+        "input_payload_len",
+        "canonical_replay_payload_len",
+        "canonical_payload_match",
+        "first_mismatch_offset",
+        "frame_flush_bytes",
+        "superblocks"
+      ],
+      "properties": {
+        "frame_index": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+        "flags": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["key", "golden_refresh", "show"],
+          "properties": {
+            "key": { "type": "boolean" },
+            "golden_refresh": { "type": "boolean" },
+            "show": { "type": "boolean" }
+          }
+        },
+        "qp": { "type": "integer", "minimum": 0, "maximum": 63 },
+        "input_payload_len": { "type": "integer", "minimum": 5, "maximum": 16777216 },
+        "canonical_replay_payload_len": { "type": "integer", "minimum": 5 },
+        "canonical_payload_match": { "type": "boolean" },
+        "first_mismatch_offset": {
+          "oneOf": [
+            { "type": "integer", "minimum": 0 },
+            { "type": "null" }
+          ]
+        },
+        "frame_flush_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Bytes emitted while the canonical shadow range encoder is finalized; this is timing, not syntax ownership."
+        },
+        "superblocks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "pos",
+              "size",
+              "structure_modeled_entropy_q16",
+              "structure_emitted_payload_bytes",
+              "cbs"
+            ],
+            "properties": {
+              "pos": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": { "type": "integer", "minimum": 0 }
+              },
+              "size": { "const": 64 },
+              "structure_modeled_entropy_q16": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Q16 modeled entropy for quadtree bins; it is not folded into a leaf."
+              },
+              "structure_emitted_payload_bytes": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Canonical replay bytes emitted while partition syntax was replayed; delayed carry means this is not partition ownership."
+              },
+              "cbs": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "pos",
+                    "size",
+                    "prediction",
+                    "qp",
+                    "modeled_entropy_q16",
+                    "emitted_payload_bytes",
+                    "dc_energy"
+                  ],
+                  "properties": {
+                    "pos": {
+                      "type": "array",
+                      "minItems": 2,
+                      "maxItems": 2,
+                      "items": { "type": "integer", "minimum": 0 }
+                    },
+                    "size": { "type": "integer", "enum": [8, 16, 32, 64] },
+                    "prediction": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": ["kind", "mode"],
+                          "properties": {
+                            "kind": { "const": "intra" },
+                            "mode": {
+                              "type": "string",
+                              "enum": ["dc", "planar", "horizontal", "vertical", "d45", "d135", "d117", "d153"]
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": ["kind", "reference"],
+                          "properties": {
+                            "kind": { "const": "skip" },
+                            "reference": { "type": "string", "enum": ["last", "golden"] }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": ["kind", "reference", "mv_q4"],
+                          "properties": {
+                            "kind": { "const": "inter" },
+                            "reference": { "type": "string", "enum": ["last", "golden"] },
+                            "mv_q4": {
+                              "type": "array",
+                              "minItems": 2,
+                              "maxItems": 2,
+                              "items": { "type": "integer", "minimum": -32768, "maximum": 32767 }
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    "qp": { "type": "integer", "minimum": 0, "maximum": 63 },
+                    "modeled_entropy_q16": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "description": "Q16 model cost for this coding block; it is an estimate, not exact coded bits."
+                    },
+                    "emitted_payload_bytes": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "description": "Canonical replay bytes emitted during this block's replay interval; delayed carry means this is not block ownership."
+                    },
+                    "dc_energy": { "type": "integer", "minimum": 0 },
+                    "syntax_trace": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["element", "context_id", "value", "modeled_entropy_q16", "emitted_payload_bytes"],
+                        "properties": {
+                          "element": { "type": "string" },
+                          "context_id": {
+                            "oneOf": [
+                              { "type": "integer", "minimum": 0, "maximum": 143 },
+                              { "type": "null" }
+                            ]
+                          },
+                          "value": { "type": "integer" },
+                          "modeled_entropy_q16": { "type": "integer", "minimum": 0 },
+                          "emitted_payload_bytes": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "Canonical replay emission timing only; never per-symbol ownership."
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

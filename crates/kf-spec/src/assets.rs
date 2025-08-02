@@ -65,4 +65,8 @@ pub const V1_ASSETS: &[Asset] = &[
         name: "vectors.json",
         contents: include_str!("../../../spec/v1/vectors.json"),
     },
+    Asset {
+        name: "probe.schema.json",
+        contents: include_str!("../../../spec/v1/probe.schema.json"),
+    },
 ];

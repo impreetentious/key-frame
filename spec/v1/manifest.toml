@@ -18,6 +18,7 @@ required = [
   "costs.toml",
   "transform-vectors.toml",
   "vectors.json",
+  "probe.schema.json",
 ]
 
 [rules]

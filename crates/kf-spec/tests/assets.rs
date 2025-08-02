@@ -20,6 +20,7 @@ fn frozen_asset_names_are_complete_and_stable() {
             "costs.toml",
             "transform-vectors.toml",
             "vectors.json",
+            "probe.schema.json",
         ]
     );
     assert!(V1_ASSETS.iter().all(|asset| !asset.contents.is_empty()));

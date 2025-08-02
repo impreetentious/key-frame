@@ -62,7 +62,7 @@ def main():
         "constants.toml", "fields.toml", "contexts.toml", "syntax.toml",
         "intra.toml", "mc.toml", "deblock.toml", "search.toml", "scans.toml",
         "transforms.toml", "quant.toml", "costs.toml", "transform-vectors.toml",
-        "vectors.json",
+        "vectors.json", "probe.schema.json",
     ]
     for name in required:
         if not (V1 / name).is_file():

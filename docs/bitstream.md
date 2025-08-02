@@ -220,8 +220,9 @@ The SHA-256 values below identify the literal inputs used for this rendering.
 | `deblock.toml` | `cbf282fdbe220f3f0bad92abfc331b3e35124a6b6e20d9f337d8660e26bcec5a` |
 | `fields.toml` | `43f34961d982ae143e39ce586577f00933e49953f21ee8e808537f410c46b0fc` |
 | `intra.toml` | `806381ebe7948c9d473284ed00c9b66e2a53d6f3e4339407d0eb43c10f090ac4` |
-| `manifest.toml` | `a35f272d672849c5eb429eac05259430e2ff6eede10df847271bb3d14646e431` |
+| `manifest.toml` | `3da4b04369d5a6fde1fe896c2b871a93e46a008865de358f5e6743bed182dc09` |
 | `mc.toml` | `a3dba431b9dcf8a4cfa0d0593dbed1c127314b4f3e1b296eab4af36832e534b9` |
+| `probe.schema.json` | `1a369a113ea65cbdbb3ed120224e98b5014a9c14c85fdcfb99dc5a3d7f3695c9` |
 | `quant.toml` | `17432a941a4e1bd0beb6730139fd803097c0a15b863db37c18f46b07d1ad0f11` |
 | `scans.toml` | `231a562dfbc01351511587be5a201bff1907168b670580bd8967a6551923fb78` |
 | `search.toml` | `fc54535e12f2ba02ddb0be0abb865c0e7c791ec43b3b854e49849ca716ee7f69` |
