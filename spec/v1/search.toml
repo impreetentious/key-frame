@@ -3,10 +3,13 @@ partition_compare = "children_before_parent"
 intra_mode_order = ["dc", "planar", "horizontal", "vertical", "d45", "d135", "d117", "d153"]
 reference_order = ["last", "golden"]
 zero_mv_first = true
+fullpel_center = "nearest_fullpel_ties_away_from_zero"
 fullpel_pattern = [[0, -1], [-1, 0], [1, 0], [0, 1]]
 fullpel_termination = "best_unchanged_for_full_ring"
 subpel_order = [[0, -1], [-1, -1], [-1, 0], [-1, 1], [0, 1], [1, 1], [1, 0], [1, -1]]
 subpel_rounds = 2
+subpel_steps_q4 = [2, 1]
+search_distortion = "luma_sad"
 
 [ties]
 reference = "lower_index"

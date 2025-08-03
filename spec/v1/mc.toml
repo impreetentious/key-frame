@@ -1,6 +1,9 @@
 precision = "quarter_pel"
 phase_numerators = [0, 1, 2, 3]
 phase_denominator = 4
+motion_vector_units = "quarter_luma_pixel"
+chroma_phase_numerators = [0, 1, 2, 3, 4, 5, 6, 7]
+chroma_phase_denominator = 8
 horizontal_before_vertical = true
 edge_extension_pixels = 64
 fullpel_search_min = -64
@@ -11,6 +14,28 @@ single_stage_rounding = 16
 single_stage_shift = 5
 two_stage_rounding = 512
 two_stage_shift = 10
+
+# Each half-filter result remains at the current stage's scale. Intermediate
+# phases are integer blends between the adjacent integer and half positions;
+# division is floor division after adding the listed positive rounding bias.
+# These sequences name (left_position, right_position, right_weight,
+# weight_denominator, rounding_bias).
+luma_phase_sequences = [
+  [0, 0, 0, 1, 0],
+  [0, 1, 1, 2, 1],
+  [1, 1, 0, 1, 0],
+  [1, 2, 1, 2, 1],
+]
+chroma_phase_sequences = [
+  [0, 0, 0, 1, 0],
+  [0, 1, 1, 4, 2],
+  [0, 1, 1, 2, 1],
+  [0, 1, 3, 4, 2],
+  [1, 1, 0, 1, 0],
+  [1, 2, 1, 4, 2],
+  [1, 2, 1, 2, 1],
+  [1, 2, 3, 4, 2],
+]
 
 [mv_predictor]
 candidates = ["left", "above", "above_right_else_above_left"]

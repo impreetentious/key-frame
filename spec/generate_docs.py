@@ -186,8 +186,13 @@ the componentwise median of left, above, and above-right (falling back to
 above-left); a candidate contributes only when available, inter-coded, and on
 the selected reference, otherwise it contributes zero. Reference extension is
 64 pixels. The six-tap filter `[1,-5,20,20,-5,1]/32` runs horizontal before
-vertical. A two-stage sample rounds `(value+512)>>10`; a one-stage sample uses
-`(value+16)>>5`.
+vertical. Its half phase remains at the current stage scale. Luma quarter and
+three-quarter phases are the rounded 1:1 blends of integer→half and half→next;
+the positive rounding bias is one before floor division by two. Motion vectors
+remain in quarter-luma-pixel units on chroma, producing eighth-chroma-pixel
+positions: phases between integer and half use rounded 3:1, 1:1, and 1:3
+blends, with bias two before division by four where applicable. A two-axis
+sample rounds `(value+512)>>10`; a one-axis sample uses `(value+16)>>5`.
 
 ## 9. Transform and quantization
 

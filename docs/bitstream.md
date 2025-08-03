@@ -158,8 +158,13 @@ the componentwise median of left, above, and above-right (falling back to
 above-left); a candidate contributes only when available, inter-coded, and on
 the selected reference, otherwise it contributes zero. Reference extension is
 64 pixels. The six-tap filter `[1,-5,20,20,-5,1]/32` runs horizontal before
-vertical. A two-stage sample rounds `(value+512)>>10`; a one-stage sample uses
-`(value+16)>>5`.
+vertical. Its half phase remains at the current stage scale. Luma quarter and
+three-quarter phases are the rounded 1:1 blends of integer→half and half→next;
+the positive rounding bias is one before floor division by two. Motion vectors
+remain in quarter-luma-pixel units on chroma, producing eighth-chroma-pixel
+positions: phases between integer and half use rounded 3:1, 1:1, and 1:3
+blends, with bias two before division by four where applicable. A two-axis
+sample rounds `(value+512)>>10`; a one-axis sample uses `(value+16)>>5`.
 
 ## 9. Transform and quantization
 
@@ -221,11 +226,11 @@ The SHA-256 values below identify the literal inputs used for this rendering.
 | `fields.toml` | `43f34961d982ae143e39ce586577f00933e49953f21ee8e808537f410c46b0fc` |
 | `intra.toml` | `806381ebe7948c9d473284ed00c9b66e2a53d6f3e4339407d0eb43c10f090ac4` |
 | `manifest.toml` | `3da4b04369d5a6fde1fe896c2b871a93e46a008865de358f5e6743bed182dc09` |
-| `mc.toml` | `a3dba431b9dcf8a4cfa0d0593dbed1c127314b4f3e1b296eab4af36832e534b9` |
+| `mc.toml` | `f15dc6b79f647d9ef9e11484618e702d8dccb9e16ee63069b98b64f7f2c31ef1` |
 | `probe.schema.json` | `1a369a113ea65cbdbb3ed120224e98b5014a9c14c85fdcfb99dc5a3d7f3695c9` |
 | `quant.toml` | `17432a941a4e1bd0beb6730139fd803097c0a15b863db37c18f46b07d1ad0f11` |
 | `scans.toml` | `231a562dfbc01351511587be5a201bff1907168b670580bd8967a6551923fb78` |
-| `search.toml` | `fc54535e12f2ba02ddb0be0abb865c0e7c791ec43b3b854e49849ca716ee7f69` |
+| `search.toml` | `7cfc0e02e0e3a4994c109d3746dc9997b53a92d553e96f446bc08c5362767aa5` |
 | `syntax.toml` | `92467acd24f90bf69448624f536de514ffcb72849b17be202a5cd8e29e08689a` |
 | `transform-vectors.toml` | `c7d775b5895a34e9865f358feccd5db1a1fd969ed8b79fb33de95581e66e2786` |
 | `transforms.toml` | `32be222922aa6e454d843786d1b3d4f0e21a6cfba756b46b9efd2a766e187910` |
