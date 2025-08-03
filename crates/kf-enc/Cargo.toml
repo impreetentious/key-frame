@@ -16,6 +16,7 @@ kf-transform = { path = "../kf-transform" }
 [dev-dependencies]
 kf-dec = { path = "../kf-dec" }
 kf-ref = { path = "../kf-ref" }
+kf-tools = { path = "../kf-tools" }
 
 [lints]
 workspace = true

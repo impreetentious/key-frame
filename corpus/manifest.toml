@@ -1,0 +1,22 @@
+format = "key-frame-corpus-v1"
+source = "Xiph.Org Derf test-media collection"
+source_index = "https://media.xiph.org/video/derf/"
+checksum_index = "https://media.xiph.org/video/derf/y4m/MD5SUMS.txt"
+
+[[clips]]
+name = "akiyo_qcif"
+file = "akiyo_qcif.y4m"
+url = "https://media.xiph.org/video/derf/y4m/akiyo_qcif.y4m"
+md5 = "18269969d4333b7c5427431b15dbaa99"
+width = 176
+height = 144
+frames = 300
+
+[[clips]]
+name = "foreman_qcif"
+file = "foreman_qcif.y4m"
+url = "https://media.xiph.org/video/derf/y4m/foreman_qcif.y4m"
+md5 = "7328a830f32ee4eeea37c40b8514822c"
+width = 176
+height = 144
+frames = 300
