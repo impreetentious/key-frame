@@ -2,8 +2,9 @@ use std::{env, fs, path::PathBuf, process::ExitCode};
 
 use kf_bitstream::SequenceHeader;
 use kf_dec::FastDecoder;
-use kf_enc::IntraEncoder;
+use kf_enc::{Encoder, IntraEncoder};
 use kf_frame::Frame;
+use kf_ref::ReferenceDecoder;
 use kf_tools::sha256_hex;
 
 struct Vector {
@@ -62,6 +63,30 @@ fn generate(check: bool) -> Result<(), String> {
         ));
         artifacts.push((output_dir.join(file_name), encoded.bytes));
     }
+    let inter_sources = inter_sources()?;
+    let inter_sequence =
+        SequenceHeader::new(64, 64, 24, 1, 120, 2).map_err(|error| error.to_string())?;
+    let inter_encoded = Encoder::new(inter_sequence, 32)
+        .map_err(|error| error.to_string())?
+        .encode(&inter_sources)
+        .map_err(|error| error.to_string())?;
+    let inter_decoded = FastDecoder::new()
+        .decode_stream(&inter_encoded.bytes)
+        .map_err(|error| error.to_string())?;
+    let independent = ReferenceDecoder::new()
+        .decode_stream(&inter_encoded.bytes)
+        .map_err(|error| error.to_string())?;
+    if inter_decoded != independent || inter_decoded != inter_encoded.reconstructed_frames {
+        return Err("inter staging stream disagrees across closed loop and decoders".to_owned());
+    }
+    let decoded_bytes = inter_decoded.iter().flat_map(raw_yuv).collect::<Vec<_>>();
+    let inter_file = "inter_motion64_qp32.kfv";
+    manifest.push_str(&format!(
+        "[[vectors]]\nname = \"inter_motion64_qp32\"\nstream = \"{inter_file}\"\nwidth = 64\nheight = 64\nframe_count = 3\nqp = 32\nfeatures = [\"p_frame\", \"motion\", \"reference_refresh\", \"context_carry\"]\nstream_sha256 = \"{}\"\ndecoded_yuv_sha256 = \"{}\"\n\n",
+        sha256_hex(&inter_encoded.bytes),
+        sha256_hex(&decoded_bytes),
+    ));
+    artifacts.push((output_dir.join(inter_file), inter_encoded.bytes));
     artifacts.push((output_dir.join("manifest.toml"), manifest.into_bytes()));
     if check {
         for (path, expected) in artifacts {
@@ -111,6 +136,33 @@ fn vectors() -> Result<Vec<Vector>, String> {
             source: gradient,
         },
     ])
+}
+
+fn inter_sources() -> Result<Vec<Frame>, String> {
+    let mut first = Frame::filled_420(64, 64, 96).map_err(|error| error.to_string())?;
+    for y in 0..64 {
+        for x in 0..64 {
+            first
+                .y
+                .set(x, y, u8::try_from((x * 5 + y * 3) % 256).unwrap())
+                .map_err(|error| error.to_string())?;
+        }
+    }
+    let mut second = first.clone();
+    let mut third = first.clone();
+    for y in 0..64 {
+        for x in 0..64 {
+            second
+                .y
+                .set(x, y, first.y.get(x.saturating_sub(1), y).unwrap())
+                .map_err(|error| error.to_string())?;
+            third
+                .y
+                .set(x, y, first.y.get(x.saturating_sub(2), y).unwrap())
+                .map_err(|error| error.to_string())?;
+        }
+    }
+    Ok(vec![first, second, third])
 }
 
 fn raw_yuv(frame: &Frame) -> Vec<u8> {

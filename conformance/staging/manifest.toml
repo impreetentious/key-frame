@@ -20,3 +20,14 @@ qp = 32
 stream_sha256 = "c8856c58b17779bc82df6752027494527707e399278254ff390514228cfa0ec9"
 decoded_yuv_sha256 = "4887b73acf158df2fa49999e9b2fe51f38883816a84b1939468ea67453b1c3c8"
 
+[[vectors]]
+name = "inter_motion64_qp32"
+stream = "inter_motion64_qp32.kfv"
+width = 64
+height = 64
+frame_count = 3
+qp = 32
+features = ["p_frame", "motion", "reference_refresh", "context_carry"]
+stream_sha256 = "3f5012a798358e91255ed2a4e756926e91e86aea26f9fcd38e76bb3613a46d81"
+decoded_yuv_sha256 = "b8597d23c5f1840e132eddb6704500c5fad7c5995a33a19eab7297e7b1273615"
+
