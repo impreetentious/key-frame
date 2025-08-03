@@ -12,6 +12,7 @@ fn frozen_asset_names_are_complete_and_stable() {
             "syntax.toml",
             "intra.toml",
             "mc.toml",
+            "mc-vectors.toml",
             "deblock.toml",
             "search.toml",
             "scans.toml",

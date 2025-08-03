@@ -10,6 +10,7 @@ required = [
   "syntax.toml",
   "intra.toml",
   "mc.toml",
+  "mc-vectors.toml",
   "deblock.toml",
   "search.toml",
   "scans.toml",

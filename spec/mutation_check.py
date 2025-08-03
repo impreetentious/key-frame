@@ -67,6 +67,16 @@ def bump_scalar(key):
     return apply
 
 
+def bump_first_case_expectation(text):
+    """Changes one expected sample of the first motion-compensation case."""
+    match = re.search(r"^expected = \[\s*(\d+)", text, re.MULTILINE)
+    if not match:
+        raise SystemExit("mutation target expected not found")
+    value = (int(match.group(1)) + 1) % 256
+    start, end = match.span(1)
+    return text[:start] + str(value) + text[end:]
+
+
 def flip_oracle_payload(text):
     """Changes one byte of one committed oracle vector."""
     document = json.loads(text)
@@ -82,6 +92,7 @@ CASES = [
     Case("quant.toml", "one quantizer scale entry", bump_first_in_array("qscale"), True),
     Case("costs.toml", "one modeled-entropy cost entry", bump_first_in_array("cost0_q16"), True),
     Case("contexts.toml", "the closed context count", bump_scalar("count"), True),
+    Case("mc-vectors.toml", "one expected interpolated sample", bump_first_case_expectation, True),
     Case("vectors.json", "one oracle packet payload byte", flip_oracle_payload, True),
 ]
 

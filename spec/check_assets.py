@@ -60,7 +60,7 @@ def main():
     errors = []
     required = [
         "constants.toml", "fields.toml", "contexts.toml", "syntax.toml",
-        "intra.toml", "mc.toml", "deblock.toml", "search.toml", "scans.toml",
+        "intra.toml", "mc.toml", "mc-vectors.toml", "deblock.toml", "search.toml", "scans.toml",
         "transforms.toml", "quant.toml", "costs.toml", "transform-vectors.toml",
         "vectors.json", "probe.schema.json",
     ]
@@ -145,6 +145,93 @@ def main():
     if array(V1 / "quant.toml", "lambda_q8") != lambda_q8:
         errors.append("quant.toml lambda_q8 differs from C.4")
 
+    def mc_sample(source, width, height, x, y):
+        x = max(0, min(width - 1, x))
+        y = max(0, min(height - 1, y))
+        return source[y * width + x]
+
+    def mc_blend(left, right, right_weight, denominator):
+        return (left * (denominator - right_weight) + right * right_weight + denominator // 2) // denominator
+
+    def mc_phase(integer, half, next_integer, phase, denominator):
+        half_phase = denominator // 2
+        if phase == 0:
+            return integer
+        if phase == half_phase:
+            return half
+        if phase < half_phase:
+            return mc_blend(integer, half, phase, half_phase)
+        return mc_blend(half, next_integer, phase - half_phase, half_phase)
+
+    def mc_vector(source, width, height, block_x, block_y, block_size, mv, denominator):
+        taps = [1, -5, 20, 20, -5, 1]
+
+        def horizontal(x, y, phase):
+            integer = mc_sample(source, width, height, x, y) * 32
+            half = sum(tap * mc_sample(source, width, height, x + index - 2, y) for index, tap in enumerate(taps))
+            following = mc_sample(source, width, height, x + 1, y) * 32
+            return mc_phase(integer, half, following, phase, denominator)
+
+        x_integer, x_phase = divmod(mv[0], denominator)
+        y_integer, y_phase = divmod(mv[1], denominator)
+        output = []
+        for row in range(block_size):
+            for column in range(block_size):
+                x = block_x + column + x_integer
+                y = block_y + row + y_integer
+                if y_phase == 0:
+                    scaled = horizontal(x, y, x_phase) * 32
+                else:
+                    half = sum(tap * horizontal(x, y + index - 2, x_phase) for index, tap in enumerate(taps))
+                    integer = horizontal(x, y, x_phase) * 32
+                    following = horizontal(x, y + 1, x_phase) * 32
+                    scaled = mc_phase(integer, half, following, y_phase, denominator)
+                output.append(max(0, min(255, (scaled + 512) >> 10)))
+        return output
+
+    try:
+        mc_path = V1 / "mc-vectors.toml"
+        mc_text = mc_path.read_text(encoding="utf-8")
+        source = array(mc_path, "source")
+        scalar_values = {}
+        for key in ("source_width", "source_height", "block_x", "block_y", "block_size"):
+            match = re.search(r"^%s\s*=\s*(\d+)$" % key, mc_text, re.MULTILINE)
+            if not match:
+                raise ValueError("missing scalar %s" % key)
+            scalar_values[key] = int(match.group(1))
+        cases = re.findall(
+            r'\[\[cases\]\]\nname = "([^"]+)"\nscale = "([^"]+)"\nmv_q4 = (\[.*\])\nexpected = (\[.*\])',
+            mc_text,
+        )
+        if 'format = "key-frame-mc-vectors-v1"' not in mc_text or len(cases) != 24:
+            errors.append("mc-vectors.toml must contain the 24 reviewed luma/chroma phase cases")
+        for name, scale, mv_text, expected_text in cases:
+            denominator = 4 if scale == "luma" else 8
+            expected = mc_vector(
+                source,
+                scalar_values["source_width"],
+                scalar_values["source_height"],
+                scalar_values["block_x"],
+                scalar_values["block_y"],
+                scalar_values["block_size"],
+                ast.literal_eval(mv_text),
+                denominator,
+            )
+            if ast.literal_eval(expected_text) != expected:
+                errors.append("MC vector %s differs from the literal phase path" % name)
+        stage_source = array(mc_path, "stage_order_source")
+        stage_mv = array(mc_path, "stage_order_mv_q4")
+        stage_expected = mc_vector(stage_source, 8, 8, 2, 2, 4, stage_mv, 4)
+        transposed_source = [stage_source[x * 8 + y] for y in range(8) for x in range(8)]
+        transposed_block = mc_vector(transposed_source, 8, 8, 2, 2, 4, stage_mv[::-1], 4)
+        vertical_first = [transposed_block[x * 4 + y] for y in range(4) for x in range(4)]
+        if array(mc_path, "stage_order_expected") != stage_expected:
+            errors.append("MC stage-order vector differs from horizontal-before-vertical")
+        if array(mc_path, "stage_order_vertical_first") != vertical_first or vertical_first == stage_expected:
+            errors.append("MC stage-order trap does not distinguish the reversed path")
+    except (AssertionError, KeyError, ValueError) as error:
+        errors.append("mc-vectors.toml is malformed: %s" % error)
+
     cost0 = array(V1 / "costs.toml", "cost0_q16")
     cost1 = array(V1 / "costs.toml", "cost1_q16")
     expected0 = [rounded(-math.log((4096 - p1) / 4096.0, 2) * 65536) for p1 in range(1, 4096)]
@@ -155,6 +242,9 @@ def main():
     vectors = json.loads((V1 / "vectors.json").read_text(encoding="utf-8"))
     if vectors.get("format") != "key-frame-oracle-v1":
         errors.append("vectors.json has the wrong format id")
+    probe_schema = json.loads((V1 / "probe.schema.json").read_text(encoding="utf-8"))
+    if probe_schema.get("properties", {}).get("probe_version", {}).get("const") != 1:
+        errors.append("probe.schema.json does not freeze probe_version 1")
     oracle = subprocess.run(
         [sys.executable, str(ROOT / "oracle.py"), "--check"],
         cwd=str(ROOT.parent),

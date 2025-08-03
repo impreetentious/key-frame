@@ -225,7 +225,8 @@ The SHA-256 values below identify the literal inputs used for this rendering.
 | `deblock.toml` | `cbf282fdbe220f3f0bad92abfc331b3e35124a6b6e20d9f337d8660e26bcec5a` |
 | `fields.toml` | `43f34961d982ae143e39ce586577f00933e49953f21ee8e808537f410c46b0fc` |
 | `intra.toml` | `806381ebe7948c9d473284ed00c9b66e2a53d6f3e4339407d0eb43c10f090ac4` |
-| `manifest.toml` | `3da4b04369d5a6fde1fe896c2b871a93e46a008865de358f5e6743bed182dc09` |
+| `manifest.toml` | `0dbd7ba9ee22a9348847f18716a85573fcc1eb9e1c7cf86c2cb75d821e5a582b` |
+| `mc-vectors.toml` | `88c3901b4c107d2a11be883bb6e5bf1f039803659eaa82a6b87d577ff0bde6b3` |
 | `mc.toml` | `f15dc6b79f647d9ef9e11484618e702d8dccb9e16ee63069b98b64f7f2c31ef1` |
 | `probe.schema.json` | `1a369a113ea65cbdbb3ed120224e98b5014a9c14c85fdcfb99dc5a3d7f3695c9` |
 | `quant.toml` | `17432a941a4e1bd0beb6730139fd803097c0a15b863db37c18f46b07d1ad0f11` |

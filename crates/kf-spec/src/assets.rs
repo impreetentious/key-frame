@@ -34,6 +34,10 @@ pub const V1_ASSETS: &[Asset] = &[
         contents: include_str!("../../../spec/v1/mc.toml"),
     },
     Asset {
+        name: "mc-vectors.toml",
+        contents: include_str!("../../../spec/v1/mc-vectors.toml"),
+    },
+    Asset {
         name: "deblock.toml",
         contents: include_str!("../../../spec/v1/deblock.toml"),
     },
