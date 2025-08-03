@@ -75,6 +75,8 @@ Rust 1.87.0 · edition 2024 · Bash · Node.js for repository checks
 - [`spec/`](spec/) holds the literal assets, their derivation checks, and an
   independent standard-library oracle that authors test vectors without the
   Rust implementation.
+- [`conformance/`](conformance/) holds committed streams with their decoded
+  hashes, reproduced on both native targets in continuous integration.
 - [`corpus/`](corpus/) pins the source clips used for measurement; the video
   itself is fetched, never redistributed.
 
@@ -126,4 +128,4 @@ preflight green.
 
 ---
 
-**Version:** v0.6.2
+**Version:** v0.7.0

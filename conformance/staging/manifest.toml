@@ -1,0 +1,22 @@
+format = "key-frame-staging-v0"
+pre_freeze = true
+bitstream_version = 1
+
+[[vectors]]
+name = "neutral64_qp28"
+stream = "neutral64_qp28.kfv"
+width = 64
+height = 64
+qp = 28
+stream_sha256 = "0dd5038b980fc19dfecedbe9c345bf6bfd6bfa9dd05298da6ea75a244d060c01"
+decoded_yuv_sha256 = "cb11e05cb5da949c0e0f5b5a7cb310df35a96a22c45d1ada70d950859fe697d1"
+
+[[vectors]]
+name = "gradient66x64_qp32"
+stream = "gradient66x64_qp32.kfv"
+width = 66
+height = 64
+qp = 32
+stream_sha256 = "c8856c58b17779bc82df6752027494527707e399278254ff390514228cfa0ec9"
+decoded_yuv_sha256 = "4887b73acf158df2fa49999e9b2fe51f38883816a84b1939468ea67453b1c3c8"
+
