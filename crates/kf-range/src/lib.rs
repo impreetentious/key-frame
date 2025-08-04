@@ -4,6 +4,7 @@
 
 mod accounting;
 mod cost;
+mod coverage;
 mod decoder;
 mod encoder;
 mod error;
@@ -11,6 +12,7 @@ mod probability;
 
 pub use accounting::{EmissionEvent, EncodedRange, RangeStats};
 pub use cost::modeled_cost_q16;
+pub use coverage::CoverageCounter;
 pub use decoder::RangeDecoder;
 pub use encoder::RangeEncoder;
 pub use error::RangeError;

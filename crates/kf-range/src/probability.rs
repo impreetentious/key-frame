@@ -73,6 +73,12 @@ impl ContextBank {
     pub const fn as_slice(&self) -> &[Probability] {
         &self.contexts
     }
+
+    /// Copies every `p1` value in frozen id order for lockstep comparison.
+    #[must_use]
+    pub fn p1_values(&self) -> [u16; CONTEXT_COUNT] {
+        core::array::from_fn(|index| self.contexts[index].p1())
+    }
 }
 
 fn initial_contexts() -> &'static [Probability; CONTEXT_COUNT] {
@@ -116,6 +122,7 @@ mod tests {
         let bank = ContextBank::initial();
         assert_eq!(bank.as_slice().len(), CONTEXT_COUNT);
         assert!(bank.as_slice().iter().all(|context| context.p1() == 2048));
+        assert_eq!(bank.p1_values(), [2048; CONTEXT_COUNT]);
     }
 
     #[test]

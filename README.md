@@ -128,4 +128,4 @@ preflight green.
 
 ---
 
-**Version:** v0.8.0
+**Version:** v0.8.1

@@ -10,6 +10,7 @@ cargo test --locked -p kf-bitstream \
   --test prediction_syntax \
   --test coefficient_syntax \
   --test syntax_properties \
-  --test rdo_snapshot
+  --test rdo_snapshot \
+  --test coverage_syntax
 
-echo "syntax-gate: OK — partitions, key/P branches, MV bins, scans, levels, truncation, and search snapshots"
+echo "syntax-gate: OK — partitions, key/P branches, MV bins, scans, levels, truncation, search snapshots, and context coverage"

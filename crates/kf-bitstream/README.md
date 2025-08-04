@@ -13,3 +13,8 @@ sync/header candidates advance one byte; a header-valid packet with a bad
 payload checksum consumes its declared capped extent. The scanner tracks
 strictly increasing frame indices without treating nominal GOP intervals as a
 decoder schedule.
+
+Syntax readers and writers record every frozen context id they code. Bypass
+bins never appear in that set. The resulting coverage bitmap is compared
+across encode and decode of the same payload so a silent id mismatch cannot
+hide behind a matching reconstruction.

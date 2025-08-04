@@ -1,4 +1,6 @@
-use kf_range::{ContextBank, EncodedRange, RangeDecoder, RangeEncoder, RangeError, RangeStats};
+use kf_range::{
+    ContextBank, CoverageCounter, EncodedRange, RangeDecoder, RangeEncoder, RangeError, RangeStats,
+};
 
 use crate::BitstreamError;
 
@@ -7,6 +9,7 @@ use crate::BitstreamError;
 pub struct SyntaxWriter {
     range: RangeEncoder,
     contexts: ContextBank,
+    coverage: CoverageCounter,
 }
 
 impl SyntaxWriter {
@@ -15,10 +18,14 @@ impl SyntaxWriter {
         Self {
             range: RangeEncoder::new(),
             contexts,
+            coverage: CoverageCounter::new(),
         }
     }
 
     pub(crate) fn context(&mut self, id: u16, symbol: bool) -> Result<(), BitstreamError> {
+        self.coverage
+            .record(id)
+            .map_err(|_| syntax_error("context.id"))?;
         let probability = self
             .contexts
             .get_mut(id)
@@ -46,6 +53,12 @@ impl SyntaxWriter {
         &self.contexts
     }
 
+    /// Frozen ids coded on this writer.
+    #[must_use]
+    pub const fn coverage(&self) -> &CoverageCounter {
+        &self.coverage
+    }
+
     #[must_use]
     pub fn finish(self) -> (EncodedRange, ContextBank) {
         (self.range.finish(), self.contexts)
@@ -57,6 +70,7 @@ impl SyntaxWriter {
 pub struct SyntaxReader<'a> {
     range: RangeDecoder<'a>,
     contexts: ContextBank,
+    coverage: CoverageCounter,
 }
 
 impl<'a> SyntaxReader<'a> {
@@ -64,10 +78,14 @@ impl<'a> SyntaxReader<'a> {
         Ok(Self {
             range: RangeDecoder::new(payload).map_err(range_error)?,
             contexts,
+            coverage: CoverageCounter::new(),
         })
     }
 
     pub(crate) fn context(&mut self, id: u16) -> Result<bool, BitstreamError> {
+        self.coverage
+            .record(id)
+            .map_err(|_| syntax_error("context.id"))?;
         let probability = self
             .contexts
             .get_mut(id)
@@ -82,6 +100,12 @@ impl<'a> SyntaxReader<'a> {
     #[must_use]
     pub fn contexts(&self) -> &ContextBank {
         &self.contexts
+    }
+
+    /// Frozen ids decoded from this payload.
+    #[must_use]
+    pub const fn coverage(&self) -> &CoverageCounter {
+        &self.coverage
     }
 
     #[must_use]

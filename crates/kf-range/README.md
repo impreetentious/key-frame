@@ -14,3 +14,8 @@ emission. Delayed carry can cause bytes to appear after later bins or during
 finalization, so an emission event records when bytes became observable, never
 which symbol owns them. The sum of all events must equal the canonical payload
 length.
+
+A coverage counter records which of the 144 frozen context ids were coded. It
+is generated against that closed id range and rejects any id outside it. A
+`p1` snapshot of the whole bank exists so encoder and decoder states can be
+compared at superblock and frame boundaries without sharing live storage.
