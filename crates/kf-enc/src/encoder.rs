@@ -7,7 +7,7 @@ use kf_predict::{
     BlockMotion, IntraMode as PredictMode, MotionField, MotionVector as PredictMotionVector,
     PlaneScale, ReferenceSlot, clamp_motion_vector, predict_inter, predict_intra,
 };
-use kf_range::ContextBank;
+use kf_range::{ContextBank, CoverageCounter};
 use kf_transform::{
     TransformSize, dequantize_block, forward_transform, inverse_transform, lambda_q8,
     quantize_block,
@@ -55,6 +55,8 @@ pub struct EncodedStream {
     pub bytes: Vec<u8>,
     pub frames: Vec<FrameAccounting>,
     pub reconstructed_frames: Vec<Frame>,
+    pub checkpoints: Vec<[u16; 144]>,
+    pub coverage: CoverageCounter,
 }
 
 /// Deterministic canonical IPPP encoder configuration.
@@ -94,6 +96,8 @@ impl Encoder {
         let mut last = None;
         let mut golden = None;
         let mut previous_source = None;
+        let mut checkpoints = Vec::new();
+        let mut coverage = CoverageCounter::new();
 
         for (frame_index, source) in frames.iter().enumerate() {
             let frame_index =
@@ -139,12 +143,16 @@ impl Encoder {
             }
             bytes.extend_from_slice(&encoded.packet.encode());
             accounting.push(encoded.accounting);
+            checkpoints.extend(encoded.checkpoints);
+            coverage.merge(&encoded.coverage);
             previous_source = Some(source);
         }
         Ok(EncodedStream {
             bytes,
             frames: accounting,
             reconstructed_frames,
+            checkpoints,
+            coverage,
         })
     }
 }
@@ -176,6 +184,8 @@ impl IntraEncoder {
         let mut bytes = self.sequence.encode().to_vec();
         let mut accounting = Vec::with_capacity(frames.len());
         let mut reconstructed_frames = Vec::with_capacity(frames.len());
+        let mut checkpoints = Vec::new();
+        let mut coverage = CoverageCounter::new();
         for (frame_index, source) in frames.iter().enumerate() {
             if source.width() != u32::from(self.sequence.width)
                 || source.height() != u32::from(self.sequence.height)
@@ -188,15 +198,19 @@ impl IntraEncoder {
                 u32::try_from(frame_index).map_err(|_| EncodeError::InvalidInput {
                     element: "frame.count",
                 })?;
-            let (packet, stats, reconstructed) = self.encode_frame(source, frame_index)?;
-            bytes.extend_from_slice(&packet.encode());
-            accounting.push(stats);
-            reconstructed_frames.push(reconstructed);
+            let encoded = self.encode_frame(source, frame_index)?;
+            bytes.extend_from_slice(&encoded.packet.encode());
+            accounting.push(encoded.accounting);
+            reconstructed_frames.push(encoded.reconstructed);
+            checkpoints.extend(encoded.checkpoints);
+            coverage.merge(&encoded.coverage);
         }
         Ok(EncodedStream {
             bytes,
             frames: accounting,
             reconstructed_frames,
+            checkpoints,
+            coverage,
         })
     }
 
@@ -204,7 +218,7 @@ impl IntraEncoder {
         &self,
         source: &Frame,
         frame_index: u32,
-    ) -> Result<(FramePacket, FrameAccounting, Frame), EncodeError> {
+    ) -> Result<EncodedVideoFrame, EncodeError> {
         let padded_width = source.width().div_ceil(64) * 64;
         let padded_height = source.height().div_ceil(64) * 64;
         let source = source
@@ -216,6 +230,7 @@ impl IntraEncoder {
             .map_err(|_| reconstruction("motion_field.allocate"))?;
         let mut writer = SyntaxWriter::new(ContextBank::initial());
         let mut superblocks = Vec::new();
+        let mut checkpoints = Vec::new();
         for y in (0..padded_height).step_by(64) {
             for x in (0..padded_width).step_by(64) {
                 let choice = select_partition(
@@ -257,6 +272,7 @@ impl IntraEncoder {
                 debug_assert_eq!(writer.contexts(), &choice.contexts);
                 reconstructed = choice.reconstructed;
                 motion_field = choice.motion_field;
+                checkpoints.push(writer.contexts().p1_values());
                 superblocks.push(SuperblockAccounting {
                     x,
                     y,
@@ -270,6 +286,7 @@ impl IntraEncoder {
                 });
             }
         }
+        let coverage = writer.coverage().clone();
         let (encoded, _contexts) = writer.finish();
         let frame_flush_bytes = encoded
             .stats
@@ -303,7 +320,14 @@ impl IntraEncoder {
                 u32::from(self.sequence.height),
             )
             .map_err(|_| reconstruction("reconstruction.crop"))?;
-        Ok((packet, stats, visible))
+        Ok(EncodedVideoFrame {
+            packet,
+            accounting: stats,
+            reconstructed: visible,
+            contexts: ContextBank::initial(),
+            checkpoints,
+            coverage,
+        })
     }
 }
 
@@ -312,6 +336,8 @@ struct EncodedVideoFrame {
     accounting: FrameAccounting,
     reconstructed: Frame,
     contexts: ContextBank,
+    checkpoints: Vec<[u16; 144]>,
+    coverage: CoverageCounter,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -338,6 +364,7 @@ fn encode_video_frame(
         .map_err(|_| reconstruction("motion_field.allocate"))?;
     let mut writer = SyntaxWriter::new(contexts);
     let mut superblocks = Vec::new();
+    let mut checkpoints = Vec::new();
     for y in (0..padded_height).step_by(64) {
         for x in (0..padded_width).step_by(64) {
             let choice = select_partition(
@@ -379,6 +406,7 @@ fn encode_video_frame(
             debug_assert_eq!(writer.contexts(), &choice.contexts);
             reconstructed = choice.reconstructed;
             motion_field = choice.motion_field;
+            checkpoints.push(writer.contexts().p1_values());
             superblocks.push(SuperblockAccounting {
                 x,
                 y,
@@ -392,6 +420,7 @@ fn encode_video_frame(
             });
         }
     }
+    let coverage = writer.coverage().clone();
     let (encoded, contexts) = writer.finish();
     let frame_flush_bytes = encoded
         .stats
@@ -424,6 +453,8 @@ fn encode_video_frame(
         accounting,
         reconstructed,
         contexts,
+        checkpoints,
+        coverage,
     })
 }
 

@@ -57,6 +57,14 @@ impl ReferenceDecoder {
 
     /// Independently decodes every key and P frame in a complete stream.
     pub fn decode_stream(&mut self, bytes: &[u8]) -> Result<Vec<Frame>, ReferenceError> {
+        Ok(self.decode_stream_traced(bytes)?.0)
+    }
+
+    /// Decodes a stream and records the context bank after every superblock.
+    pub fn decode_stream_traced(
+        &mut self,
+        bytes: &[u8],
+    ) -> Result<(Vec<Frame>, Vec<[u16; 144]>), ReferenceError> {
         self.invalidate();
         let result = self.decode_all(bytes);
         if result.is_err() {
@@ -78,9 +86,19 @@ impl ReferenceDecoder {
         self.last.is_some() && self.golden.is_some()
     }
 
-    fn decode_all(&mut self, bytes: &[u8]) -> Result<Vec<Frame>, ReferenceError> {
+    /// Committed context bank, or `None` after invalidation.
+    #[must_use]
+    pub const fn committed_p1(&self) -> Option<[u16; 144]> {
+        self.contexts
+    }
+
+    fn decode_all(
+        &mut self,
+        bytes: &[u8],
+    ) -> Result<(Vec<Frame>, Vec<[u16; 144]>), ReferenceError> {
         let (width, height, mut packet_offset) = read_sequence(bytes)?;
         let mut frames = Vec::new();
+        let mut checkpoints = Vec::new();
         while packet_offset < bytes.len() {
             let packet = read_packet(&bytes[packet_offset..])?;
             let expected_index = self
@@ -131,6 +149,7 @@ impl ReferenceDecoder {
                             packet.qp,
                         )?;
                     }
+                    checkpoints.push(range.p1_values());
                 }
             }
             let final_contexts = range.contexts();
@@ -152,7 +171,7 @@ impl ReferenceDecoder {
         if frames.is_empty() {
             return Err(ReferenceError::new(0, "initial_keyframe"));
         }
-        Ok(frames)
+        Ok((frames, checkpoints))
     }
 
     fn invalidate(&mut self) {

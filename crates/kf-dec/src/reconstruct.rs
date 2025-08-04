@@ -36,7 +36,7 @@ pub(crate) fn decode_payload(
     contexts: ContextBank,
     frame_type: FrameType,
     references: Option<ReferenceFrames<'_>>,
-) -> Result<(Frame, ContextBank), DecodeError> {
+) -> Result<(Frame, ContextBank, Vec<[u16; 144]>), DecodeError> {
     if frame_type == FrameType::P && references.is_none() {
         return Err(invalid(frame_index, "reference.missing"));
     }
@@ -47,6 +47,7 @@ pub(crate) fn decode_payload(
     let mut motion_field = MotionField::new(padded_width, padded_height)
         .map_err(|_| invalid(frame_index, "motion_field.allocate"))?;
     let mut reader = SyntaxReader::new(payload, contexts)?;
+    let mut checkpoints = Vec::new();
 
     for superblock_y in (0..padded_height).step_by(64) {
         for superblock_x in (0..padded_width).step_by(64) {
@@ -66,10 +67,11 @@ pub(crate) fn decode_payload(
                     frame_index,
                 )?;
             }
+            checkpoints.push(reader.contexts().p1_values());
         }
     }
     let final_contexts = reader.into_contexts();
-    Ok((frame, final_contexts))
+    Ok((frame, final_contexts, checkpoints))
 }
 
 #[allow(clippy::too_many_arguments)]

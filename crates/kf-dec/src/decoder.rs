@@ -29,6 +29,14 @@ impl FastDecoder {
 
     /// Decodes every frame in one complete version-one stream.
     pub fn decode_stream(&mut self, bytes: &[u8]) -> Result<Vec<Frame>, DecodeError> {
+        Ok(self.decode_stream_traced(bytes)?.0)
+    }
+
+    /// Decodes a stream and records the context bank after every superblock.
+    pub fn decode_stream_traced(
+        &mut self,
+        bytes: &[u8],
+    ) -> Result<(Vec<Frame>, Vec<[u16; 144]>), DecodeError> {
         self.invalidate();
         let sequence = SequenceHeader::decode(bytes)?;
         let packet_bytes = bytes
@@ -39,6 +47,7 @@ impl FastDecoder {
             })?;
         let mut scanner = PacketScanner::new(packet_bytes);
         let mut frames = Vec::new();
+        let mut checkpoints = Vec::new();
         loop {
             let packet = match scanner.next_packet() {
                 Ok(Some(packet)) => packet,
@@ -82,7 +91,7 @@ impl FastDecoder {
                     element: "pframe.references",
                 });
             }
-            let (padded_frame, final_contexts) = match decode_payload(
+            let (padded_frame, final_contexts, frame_checkpoints) = match decode_payload(
                 &sequence,
                 &packet.payload,
                 packet.frame_index,
@@ -109,6 +118,7 @@ impl FastDecoder {
             }
             self.contexts = Some(final_contexts);
             self.last_frame_index = Some(packet.frame_index);
+            checkpoints.extend(frame_checkpoints);
             frames.push(visible_frame);
         }
         if frames.is_empty() {
@@ -117,7 +127,7 @@ impl FastDecoder {
                 element: "initial_keyframe",
             });
         }
-        Ok(frames)
+        Ok((frames, checkpoints))
     }
 
     /// Compatibility entry point for the pre-inter staging suite.
@@ -128,6 +138,12 @@ impl FastDecoder {
     #[must_use]
     pub const fn has_references(&self) -> bool {
         self.last.is_some() && self.golden.is_some()
+    }
+
+    /// Committed context bank, or `None` after invalidation.
+    #[must_use]
+    pub fn committed_p1(&self) -> Option<[u16; 144]> {
+        self.contexts.as_ref().map(ContextBank::p1_values)
     }
 
     fn invalidate(&mut self) {

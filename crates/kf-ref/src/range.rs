@@ -56,6 +56,10 @@ impl<'a> ReferenceRange<'a> {
         self.contexts
     }
 
+    pub(crate) const fn p1_values(&self) -> [u16; 144] {
+        self.contexts
+    }
+
     fn bin(&mut self, p1: u16) -> Result<bool, ReferenceError> {
         let bound = (self.range >> 12) * (4096 - u32::from(p1));
         let symbol = if self.code < bound {
