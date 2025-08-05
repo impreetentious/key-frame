@@ -79,6 +79,15 @@ impl ContextBank {
     pub fn p1_values(&self) -> [u16; CONTEXT_COUNT] {
         core::array::from_fn(|index| self.contexts[index].p1())
     }
+
+    /// Rebuilds a bank from a lockstep snapshot. Every value must be a legal `p1`.
+    pub fn from_p1_values(values: [u16; CONTEXT_COUNT]) -> Result<Self, RangeError> {
+        let mut contexts = Self::initial().contexts;
+        for (slot, value) in contexts.iter_mut().zip(values) {
+            *slot = Probability::new(value)?;
+        }
+        Ok(Self { contexts })
+    }
 }
 
 fn initial_contexts() -> &'static [Probability; CONTEXT_COUNT] {
@@ -142,5 +151,22 @@ mod tests {
         }
         assert_eq!(low.p1(), 1);
         assert_eq!(high.p1(), 4095);
+    }
+
+    #[test]
+    fn snapshot_round_trips_through_p1_values() {
+        let mut bank = ContextBank::initial();
+        bank.get_mut(0).unwrap().update(true);
+        bank.get_mut(143).unwrap().update(false);
+        let restored = ContextBank::from_p1_values(bank.p1_values()).unwrap();
+        assert_eq!(restored, bank);
+        assert!(
+            ContextBank::from_p1_values({
+                let mut values = [2048; CONTEXT_COUNT];
+                values[0] = 0;
+                values
+            })
+            .is_err()
+        );
     }
 }

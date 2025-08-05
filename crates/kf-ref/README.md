@@ -7,3 +7,7 @@ context adaptation, inverse transform, prediction, and state commit code.
 
 No production codec crate may become a dependency. The repository gate checks
 both the manifest graph and source imports.
+
+A failed frame discards the in-flight context copy, both reference slots, and
+the committed bank. The next successful decode must be a keyframe that
+reinitializes from the literal initials.

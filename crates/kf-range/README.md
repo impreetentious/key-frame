@@ -19,3 +19,5 @@ A coverage counter records which of the 144 frozen context ids were coded. It
 is generated against that closed id range and rejects any id outside it. A
 `p1` snapshot of the whole bank exists so encoder and decoder states can be
 compared at superblock and frame boundaries without sharing live storage.
+Snapshots restore only through legal `p1` values; a zero or 4096 entry is
+rejected rather than clamped.

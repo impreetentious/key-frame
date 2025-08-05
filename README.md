@@ -103,8 +103,8 @@ One command runs every gate, in the order continuous integration runs them:
 
 It checks version, documentation, license, and specification coherence, then the
 range-coder, transform, bitstream, syntax, reference-decoder, probe, intra,
-conformance, and inter gates, then formatting, lints, the forbidden-API and
-decoder-boundary scan, the full test suite, and the documentation build.
+conformance, inter, and entropy gates, then formatting, lints, the forbidden-API
+and decoder-boundary scan, the full test suite, and the documentation build.
 
 ## Build and deploy
 
@@ -128,4 +128,4 @@ preflight green.
 
 ---
 
-**Version:** v0.8.2
+**Version:** v0.8.3

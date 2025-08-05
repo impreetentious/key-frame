@@ -6,4 +6,6 @@ canonical range-emission timing as separate quantities.
 
 After every superblock the encoder snapshots the 144-wide `p1` bank. Both
 decoders replay the same checkpoints so a context drift is visible at the first
-disagreeing superblock rather than only at the reconstructed frame.
+disagreeing superblock rather than only at the reconstructed frame. P-frames
+start from the prior committed bank; a syntax error discards the in-flight
+copy so a partial adaptation cannot become the next frame's state.
