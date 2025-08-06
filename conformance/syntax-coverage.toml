@@ -1,0 +1,120 @@
+format = "key-frame-syntax-coverage-v1"
+bitstream_version = 1
+context_count = 144
+
+# Maps every frozen context group and every payload syntax element to at least
+# one named vector. Origins are oracle (stdlib writer), hand (literal or
+# syntax-layer construction), or encoder (kfenc at pinned settings). Neighbor-
+# conditioned ids share a group vector even when the live coder currently uses
+# the n0 slot; G9 requires a later non-encoder vector per unused slot.
+
+[[groups]]
+name = "partition_split"
+ids = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+vectors = ["oracle:intra64_dc_all_zero", "hand:uniform_partition_depths"]
+
+[[groups]]
+name = "skip"
+ids = [12, 13, 14]
+vectors = ["hand:pframe_prediction_branches"]
+
+[[groups]]
+name = "is_inter"
+ids = [15, 16, 17]
+vectors = ["hand:pframe_prediction_branches"]
+
+[[groups]]
+name = "intra_mode"
+ids = [18, 19, 20, 21, 22, 23, 24, 25, 26, 27]
+vectors = ["oracle:intra64_dc_all_zero", "hand:every_intra_mode"]
+
+[[groups]]
+name = "ref_select"
+ids = [28, 29]
+vectors = ["hand:pframe_prediction_branches"]
+
+[[groups]]
+name = "mv_prefix"
+ids = [30, 31, 32, 33, 34, 35]
+vectors = ["hand:pframe_prediction_branches"]
+
+[[groups]]
+name = "has_coeff"
+ids = [36, 37, 38, 39, 40, 41, 42, 43]
+vectors = ["oracle:intra64_dc_all_zero", "hand:coefficient_size_matrix"]
+
+[[groups]]
+name = "last_position"
+ids = [44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75]
+vectors = ["hand:coefficient_size_matrix"]
+
+[[groups]]
+name = "sig"
+ids = [76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119]
+vectors = ["hand:coefficient_size_matrix"]
+
+[[groups]]
+name = "gt1"
+ids = [120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135]
+vectors = ["hand:coefficient_size_matrix"]
+
+[[groups]]
+name = "gt2"
+ids = [136, 137, 138, 139, 140, 141, 142, 143]
+vectors = ["hand:coefficient_size_matrix"]
+
+[[elements]]
+name = "partition_tree"
+vectors = ["oracle:intra64_dc_all_zero", "hand:uniform_partition_depths"]
+
+[[elements]]
+name = "skip"
+vectors = ["hand:pframe_prediction_branches"]
+
+[[elements]]
+name = "is_inter"
+vectors = ["hand:pframe_prediction_branches"]
+
+[[elements]]
+name = "intra_mode"
+vectors = ["oracle:intra64_dc_all_zero", "hand:every_intra_mode"]
+
+[[elements]]
+name = "ref_select"
+vectors = ["hand:pframe_prediction_branches"]
+
+[[elements]]
+name = "mvd"
+vectors = ["hand:pframe_prediction_branches"]
+
+[[elements]]
+name = "has_coeff"
+vectors = ["oracle:intra64_dc_all_zero", "hand:coefficient_size_matrix"]
+
+[[elements]]
+name = "last_x"
+vectors = ["hand:coefficient_size_matrix"]
+
+[[elements]]
+name = "last_y"
+vectors = ["hand:coefficient_size_matrix"]
+
+[[elements]]
+name = "sig"
+vectors = ["hand:coefficient_size_matrix"]
+
+[[elements]]
+name = "gt1"
+vectors = ["hand:coefficient_size_matrix"]
+
+[[elements]]
+name = "gt2"
+vectors = ["hand:coefficient_size_matrix"]
+
+[[elements]]
+name = "rice_remainder"
+vectors = ["hand:coefficient_size_matrix"]
+
+[[elements]]
+name = "nonzero_sign"
+vectors = ["hand:coefficient_size_matrix"]

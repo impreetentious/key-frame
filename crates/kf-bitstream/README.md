@@ -17,4 +17,5 @@ decoder schedule.
 Syntax readers and writers record every frozen context id they code. Bypass
 bins never appear in that set. The resulting coverage bitmap is compared
 across encode and decode of the same payload so a silent id mismatch cannot
-hide behind a matching reconstruction.
+hide behind a matching reconstruction. A committed inventory maps each frozen
+context group and payload element to oracle, hand, or encoder vectors.
