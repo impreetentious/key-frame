@@ -210,10 +210,15 @@ RDO estimate and are never presented as per-block payload ownership.
 ## 10. Deblocking and reference state
 
 Deblocking runs after full-frame reconstruction and before the result enters a
-reference slot. Coding-block and derived-transform edges use strength 0, 1, or
-2 from `deblock.toml`; luma uses weak four-tap or strong six-tap filtering,
-while chroma uses weak filtering. Threshold arrays alpha, beta, and tc are
-indexed by the rounded frame-QP average. Filtered output becomes LAST; a key or
+reference slot. Coding-block and derived-transform edges of at least eight
+pixels are filtered vertical-then-horizontal. Strength 0, 1, or 2 comes from
+`deblock.toml`; a candidate is skipped when `|p0-q0| >= alpha(QP)`,
+`|p1-p0| >= beta(QP)`, or `|q1-q0| >= beta(QP)`. Luma strength 1 is the weak
+four-tap `delta = clip(((q0-p0)*4 + (p1-q1) + 4) >> 3, -tc, tc)` with
+`p0' = clip8(p0+delta)` and `q0' = clip8(q0-delta)`. Luma strength 2 is the
+strong six-tap smoother in the same asset. Chroma uses the weak filter at every
+nonzero strength. Threshold arrays alpha, beta, and tc are indexed by the
+rounded frame-QP average. Filtered output becomes LAST; a key or
 authoritative golden-refresh packet also becomes GOLDEN.
 
 ## 11. Corruption state machine

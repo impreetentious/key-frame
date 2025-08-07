@@ -239,6 +239,53 @@ def main():
     if cost0 != expected0 or cost1 != expected1:
         errors.append("costs.toml entropy costs differ from the C.4 Q16 derivation")
 
+    def clip_int(value, lo, hi):
+        return max(lo, min(hi, value))
+
+    def deblock_weak(samples, qp):
+        p3, p2, p1, p0, q0, q1, q2, q3 = samples
+        alpha = array(V1 / "deblock.toml", "alpha")[qp]
+        beta = array(V1 / "deblock.toml", "beta")[qp]
+        tc = array(V1 / "deblock.toml", "tc")[qp]
+        if abs(p0 - q0) >= alpha or abs(p1 - p0) >= beta or abs(q1 - q0) >= beta:
+            return samples[:]
+        delta = clip_int(((q0 - p0) * 4 + (p1 - q1) + 4) >> 3, -tc, tc)
+        return [p3, p2, p1, clip_int(p0 + delta, 0, 255), clip_int(q0 - delta, 0, 255), q1, q2, q3]
+
+    def deblock_strong(samples):
+        p3, p2, p1, p0, q0, q1, q2, q3 = samples
+        p0_out = (p2 + 2 * p1 + 2 * p0 + 2 * q0 + q1 + 4) >> 3
+        p1_out = (p2 + p1 + p0 + q0 + 2) >> 2
+        p2_out = (2 * p3 + 3 * p2 + p1 + p0 + q0 + 4) >> 3
+        q0_out = (p1 + 2 * p0 + 2 * q0 + 2 * q1 + q2 + 4) >> 3
+        q1_out = (p0 + q0 + q1 + q2 + 2) >> 2
+        q2_out = (p0 + q0 + q1 + 3 * q2 + 2 * q3 + 4) >> 3
+        return [
+            p3,
+            clip_int(p2_out, 0, 255),
+            clip_int(p1_out, 0, 255),
+            clip_int(p0_out, 0, 255),
+            clip_int(q0_out, 0, 255),
+            clip_int(q1_out, 0, 255),
+            clip_int(q2_out, 0, 255),
+            q3,
+        ]
+
+    deblock_text = (V1 / "deblock.toml").read_text(encoding="utf-8")
+    deblock_cases = re.findall(
+        r'\[\[vectors\]\]\nname = "([^"]+)"\nkind = "(weak|strong)"\nqp = (\d+)\nsamples = (\[.*\])\nexpected = (\[.*\])',
+        deblock_text,
+    )
+    if len(deblock_cases) != 5:
+        errors.append("deblock.toml must contain 5 reviewed filter vectors")
+    for name, kind, qp_text, samples_text, expected_text in deblock_cases:
+        samples = ast.literal_eval(samples_text)
+        expected = ast.literal_eval(expected_text)
+        qp = int(qp_text)
+        got = deblock_weak(samples, qp) if kind == "weak" else deblock_strong(samples)
+        if got != expected:
+            errors.append("deblock vector %s expected %s got %s" % (name, expected, got))
+
     vectors = json.loads((V1 / "vectors.json").read_text(encoding="utf-8"))
     if vectors.get("format") != "key-frame-oracle-v1":
         errors.append("vectors.json has the wrong format id")

@@ -182,10 +182,15 @@ RDO estimate and are never presented as per-block payload ownership.
 ## 10. Deblocking and reference state
 
 Deblocking runs after full-frame reconstruction and before the result enters a
-reference slot. Coding-block and derived-transform edges use strength 0, 1, or
-2 from `deblock.toml`; luma uses weak four-tap or strong six-tap filtering,
-while chroma uses weak filtering. Threshold arrays alpha, beta, and tc are
-indexed by the rounded frame-QP average. Filtered output becomes LAST; a key or
+reference slot. Coding-block and derived-transform edges of at least eight
+pixels are filtered vertical-then-horizontal. Strength 0, 1, or 2 comes from
+`deblock.toml`; a candidate is skipped when `|p0-q0| >= alpha(QP)`,
+`|p1-p0| >= beta(QP)`, or `|q1-q0| >= beta(QP)`. Luma strength 1 is the weak
+four-tap `delta = clip(((q0-p0)*4 + (p1-q1) + 4) >> 3, -tc, tc)` with
+`p0' = clip8(p0+delta)` and `q0' = clip8(q0-delta)`. Luma strength 2 is the
+strong six-tap smoother in the same asset. Chroma uses the weak filter at every
+nonzero strength. Threshold arrays alpha, beta, and tc are indexed by the
+rounded frame-QP average. Filtered output becomes LAST; a key or
 authoritative golden-refresh packet also becomes GOLDEN.
 
 ## 11. Corruption state machine
@@ -222,7 +227,7 @@ The SHA-256 values below identify the literal inputs used for this rendering.
 | `constants.toml` | `51a1a36be5afe388763fc933e287f93d87470a19c3c7d33133a027886f585d5e` |
 | `contexts.toml` | `a7f5d7054b767990120185e9deb7f8a5110e0250ad1b3bf96f6fe09a5fc49abf` |
 | `costs.toml` | `7c64b47fcbf16abe8ce4129c94411c85009474a8628c7054325e2c8f4780968a` |
-| `deblock.toml` | `cbf282fdbe220f3f0bad92abfc331b3e35124a6b6e20d9f337d8660e26bcec5a` |
+| `deblock.toml` | `c3bcf408db017b4881e7bbf2273aa7e2221dde65f128b3f295e9361f632b2b1a` |
 | `fields.toml` | `43f34961d982ae143e39ce586577f00933e49953f21ee8e808537f410c46b0fc` |
 | `intra.toml` | `806381ebe7948c9d473284ed00c9b66e2a53d6f3e4339407d0eb43c10f090ac4` |
 | `manifest.toml` | `0dbd7ba9ee22a9348847f18716a85573fcc1eb9e1c7cf86c2cb75d821e5a582b` |

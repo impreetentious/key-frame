@@ -2,8 +2,9 @@
 
 `v1/` is the decoder-normative, inert source for Key Frame bitstream version 1.
 The files contain literal field layouts, context identifiers and initial
-probabilities, transforms, scan orders, coding tables, search order, and worked
-vectors. They contain no executable codec implementation.
+probabilities, transforms, scan orders, coding tables, search order, deblock
+filter arithmetic, and worked vectors. They contain no executable codec
+implementation.
 
 `oracle.py` is an independent Python-standard-library implementation of CRC32C
 and the range-coder vector path. It reads the inert field and constant assets
