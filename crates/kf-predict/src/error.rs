@@ -5,10 +5,26 @@ use kf_frame::PlaneError;
 /// Checked prediction failure.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PredictError {
-    InvalidSize { size: u32 },
-    BlockOutOfBounds { x: u32, y: u32, size: u32 },
-    InvalidMotionField { width: u32, height: u32 },
-    MotionFieldOverlap { x: u32, y: u32 },
+    InvalidSize {
+        size: u32,
+    },
+    BlockOutOfBounds {
+        x: u32,
+        y: u32,
+        size: u32,
+    },
+    InvalidMotionField {
+        width: u32,
+        height: u32,
+    },
+    MotionFieldOverlap {
+        x: u32,
+        y: u32,
+    },
+    /// Frame QP is outside the closed 0..=63 range.
+    InvalidQp {
+        qp: u8,
+    },
     Plane(PlaneError),
 }
 
