@@ -1,13 +1,17 @@
 # Conformance
 
-`staging/` contains encoder streams produced before the reconstruction
-pipeline is frozen. They are reproducibility receipts, not a stable
-third-party interoperability suite. Decoded hashes include the integer
-deblocking filter: the filtered image is what both decoders emit and what
-the encoder stores as LAST and GOLDEN. Regenerate them with:
+The suite has three labeled origins. None may silently replace another.
+
+- `oracle/` — streams emitted by the standard-library writer in `spec/oracle.py`
+- `hand/` — streams constructed at the syntax layer and reviewed as literals
+- `encoder/` — streams produced by the canonical encoder at pinned settings
+
+Decoded hashes include the integer deblocking filter: the filtered image is
+what both decoders emit and what the encoder stores as LAST and GOLDEN.
+Bitstream version is 1. Regenerate with:
 
 ```sh
-cargo run --locked -p kf-tools --example generate_staging
+cargo run --locked -p kf-tools --example generate_conformance
 ```
 
 CI runs the same generator in `--check` mode on Linux and macOS and requires

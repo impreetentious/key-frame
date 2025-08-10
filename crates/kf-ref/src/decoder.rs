@@ -74,7 +74,7 @@ impl ReferenceDecoder {
         result
     }
 
-    /// Compatibility entry point returning the first pre-inter staging frame.
+    /// Compatibility entry point returning the first decoded frame.
     pub fn decode_intra_stream(&mut self, bytes: &[u8]) -> Result<Frame, ReferenceError> {
         self.decode_stream(bytes)?
             .into_iter()

@@ -6,7 +6,7 @@ context_count = 144
 # one named vector. Origins are oracle (stdlib writer), hand (literal or
 # syntax-layer construction), or encoder (kfenc at pinned settings). Neighbor-
 # conditioned ids share a group vector even when the live coder currently uses
-# the n0 slot; G9 requires a later non-encoder vector per unused slot.
+# the n0 slot; later coverage work requires a non-encoder vector per unused slot.
 
 [[groups]]
 name = "partition_split"

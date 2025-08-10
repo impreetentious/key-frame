@@ -130,7 +130,7 @@ impl FastDecoder {
         Ok((frames, checkpoints))
     }
 
-    /// Compatibility entry point for the pre-inter staging suite.
+    /// Compatibility entry point for single-frame intra callers.
     pub fn decode_intra_stream(&mut self, bytes: &[u8]) -> Result<Vec<Frame>, DecodeError> {
         self.decode_stream(bytes)
     }
