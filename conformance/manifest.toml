@@ -1,0 +1,58 @@
+format = "key-frame-conformance-v1"
+bitstream_version = 1
+
+[[vectors]]
+origin = "oracle"
+name = "intra64_dc_all_zero"
+stream = "oracle/intra64_dc_all_zero.kfv"
+width = 64
+height = 64
+frame_count = 1
+qp = 32
+stream_sha256 = "dd0151be17de28e3cb5bf9185e208c0e4d6ccb9350d4c2f3ed4494f2a9d56bde"
+decoded_yuv_sha256 = "cb11e05cb5da949c0e0f5b5a7cb310df35a96a22c45d1ada70d950859fe697d1"
+
+[[vectors]]
+origin = "hand"
+name = "split32_dc_all_zero"
+stream = "hand/split32_dc_all_zero.kfv"
+width = 64
+height = 64
+frame_count = 1
+qp = 32
+stream_sha256 = "fe6f8a10af3e67fe5577904e24ca64ff26ad146e7c65e6caeb4a54e2f830ffec"
+decoded_yuv_sha256 = "cb11e05cb5da949c0e0f5b5a7cb310df35a96a22c45d1ada70d950859fe697d1"
+
+[[vectors]]
+origin = "encoder"
+name = "neutral64_qp28"
+stream = "encoder/neutral64_qp28.kfv"
+width = 64
+height = 64
+frame_count = 1
+qp = 28
+stream_sha256 = "0dd5038b980fc19dfecedbe9c345bf6bfd6bfa9dd05298da6ea75a244d060c01"
+decoded_yuv_sha256 = "cb11e05cb5da949c0e0f5b5a7cb310df35a96a22c45d1ada70d950859fe697d1"
+
+[[vectors]]
+origin = "encoder"
+name = "gradient66x64_qp32"
+stream = "encoder/gradient66x64_qp32.kfv"
+width = 66
+height = 64
+frame_count = 1
+qp = 32
+stream_sha256 = "c8856c58b17779bc82df6752027494527707e399278254ff390514228cfa0ec9"
+decoded_yuv_sha256 = "86077bd790480bd7bb8d98377c6c95711f450bac32fbb663f97701dc7bc36a12"
+
+[[vectors]]
+origin = "encoder"
+name = "inter_motion64_qp32"
+stream = "encoder/inter_motion64_qp32.kfv"
+width = 64
+height = 64
+frame_count = 3
+qp = 32
+stream_sha256 = "20976ff277e903263d63fe3408ecde2f06b004e01ad343bc4696fcaea5616079"
+decoded_yuv_sha256 = "d2e8a4069630e7975895892ca9f0ae12d3b435ecc57b7459c37a7d146b85755f"
+
