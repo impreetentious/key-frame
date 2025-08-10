@@ -10,4 +10,4 @@ python3 spec/oracle.py --check
 cargo test --locked -p kf-ref
 cargo test --locked -p kf-tools --test dependency_boundary
 
-echo "reference-gate: OK — independent reader, CRC, range, transform, prediction, atomic commit, and dependency boundary"
+echo "reference-gate: OK — independent reader, CRC, range, transform, prediction, loop filter, atomic commit, and dependency boundary"

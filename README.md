@@ -23,7 +23,8 @@ specification. Every gate in the repository exists to prove the two agree.
   and GOLDEN references with quarter-pixel six-tap motion compensation, median
   motion-vector prediction, and reference-selecting skip.
 - Codes the residual with literal 4/8/16/32 integer transforms and flat
-  quantization across the full 64-step QP range.
+  quantization across the full 64-step QP range, then deblocks the reconstructed
+  frame before it becomes a reference.
 - Entropy-codes every symbol through an adaptive binary range coder over a
   closed set of 144 contexts, with modeled-entropy costs the encoder reuses for
   its own decisions.
@@ -103,8 +104,9 @@ One command runs every gate, in the order continuous integration runs them:
 
 It checks version, documentation, license, and specification coherence, then the
 range-coder, transform, bitstream, syntax, reference-decoder, probe, intra,
-conformance, inter, and entropy gates, then formatting, lints, the forbidden-API
-and decoder-boundary scan, the full test suite, and the documentation build.
+conformance, inter, entropy, and deblock gates, then formatting, lints, the
+forbidden-API and decoder-boundary scan, the full test suite, and the
+documentation build.
 
 ## Build and deploy
 
@@ -128,4 +130,4 @@ preflight green.
 
 ---
 
-**Version:** v0.9.3
+**Version:** v0.9.4

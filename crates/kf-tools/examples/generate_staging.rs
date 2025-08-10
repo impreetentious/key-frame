@@ -49,7 +49,10 @@ fn generate(check: bool) -> Result<(), String> {
             .decode_intra_stream(&encoded.bytes)
             .map_err(|error| error.to_string())?
             .remove(0);
-        let raw_yuv = raw_yuv(&decoded);
+        let decoded_yuv = raw_yuv(&decoded);
+        if vector.name.contains("gradient") && decoded_yuv == raw_yuv(&vector.source) {
+            return Err("gradient staging decode matched the unfiltered source".to_owned());
+        }
         let file_name = format!("{}.kfv", vector.name);
         manifest.push_str(&format!(
             "[[vectors]]\nname = \"{}\"\nstream = \"{}\"\nwidth = {}\nheight = {}\nqp = {}\nstream_sha256 = \"{}\"\ndecoded_yuv_sha256 = \"{}\"\n\n",
@@ -59,7 +62,7 @@ fn generate(check: bool) -> Result<(), String> {
             vector.height,
             vector.qp,
             sha256_hex(&encoded.bytes),
-            sha256_hex(&raw_yuv),
+            sha256_hex(&decoded_yuv),
         ));
         artifacts.push((output_dir.join(file_name), encoded.bytes));
     }

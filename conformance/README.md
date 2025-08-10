@@ -2,7 +2,9 @@
 
 `staging/` contains encoder streams produced before the reconstruction
 pipeline is frozen. They are reproducibility receipts, not a stable
-third-party interoperability suite. Regenerate them with:
+third-party interoperability suite. Decoded hashes include the integer
+deblocking filter: the filtered image is what both decoders emit and what
+the encoder stores as LAST and GOLDEN. Regenerate them with:
 
 ```sh
 cargo run --locked -p kf-tools --example generate_staging
