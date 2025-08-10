@@ -4,8 +4,8 @@ use kf_bitstream::{
 };
 use kf_frame::{Frame, Plane};
 use kf_predict::{
-    BlockMotion, IntraMode as PredictMode, MotionField, MotionVector, PlaneScale, ReferenceSlot,
-    clamp_motion_vector, predict_inter, predict_intra,
+    BlockMotion, CodedBlock, IntraMode as PredictMode, MotionField, MotionVector, PlaneScale,
+    ReferenceSlot, clamp_motion_vector, deblock_frame, predict_inter, predict_intra,
 };
 use kf_range::ContextBank;
 use kf_transform::{TransformSize, dequantize_block, inverse_transform};
@@ -48,13 +48,14 @@ pub(crate) fn decode_payload(
         .map_err(|_| invalid(frame_index, "motion_field.allocate"))?;
     let mut reader = SyntaxReader::new(payload, contexts)?;
     let mut checkpoints = Vec::new();
+    let mut coded_blocks = Vec::new();
 
     for superblock_y in (0..padded_height).step_by(64) {
         for superblock_x in (0..padded_width).step_by(64) {
             let partition = reader.read_partition()?;
             for (x, y, size) in block_positions(&partition, superblock_x, superblock_y) {
                 let prediction = reader.read_prediction(frame_type)?;
-                reconstruct_block(
+                coded_blocks.push(reconstruct_block(
                     &mut reader,
                     &mut frame,
                     &mut motion_field,
@@ -65,11 +66,13 @@ pub(crate) fn decode_payload(
                     prediction,
                     qp,
                     frame_index,
-                )?;
+                )?);
             }
             checkpoints.push(reader.contexts().p1_values());
         }
     }
+    deblock_frame(&mut frame, qp, &coded_blocks)
+        .map_err(|_| invalid(frame_index, "reconstruction.deblock"))?;
     let final_contexts = reader.into_contexts();
     Ok((frame, final_contexts, checkpoints))
 }
@@ -86,11 +89,12 @@ fn reconstruct_block(
     prediction: Prediction,
     qp: u8,
     frame_index: u32,
-) -> Result<(), DecodeError> {
+) -> Result<CodedBlock, DecodeError> {
     let side = u32::from(size.side());
+    let mut coded = false;
     match prediction {
         Prediction::Intra(mode) => {
-            reconstruct_intra_plane(
+            coded |= reconstruct_intra_plane(
                 reader,
                 &mut frame.y,
                 x,
@@ -102,7 +106,7 @@ fn reconstruct_block(
                 frame_index,
             )?;
             for plane in [&mut frame.cb, &mut frame.cr] {
-                reconstruct_intra_plane(
+                coded |= reconstruct_intra_plane(
                     reader,
                     plane,
                     x / 2,
@@ -117,6 +121,13 @@ fn reconstruct_block(
             motion_field
                 .record(x, y, side, BlockMotion::Intra)
                 .map_err(|_| invalid(frame_index, "motion_field.record"))?;
+            Ok(CodedBlock {
+                x,
+                y,
+                size: side,
+                intra: true,
+                coded,
+            })
         }
         Prediction::Skip { reference } | Prediction::Inter { reference, .. } => {
             let references = references.ok_or_else(|| invalid(frame_index, "reference.missing"))?;
@@ -141,7 +152,7 @@ fn reconstruct_block(
             )
             .map_err(|_| invalid(frame_index, "motion.clamp"))?;
             let skip = matches!(prediction, Prediction::Skip { .. });
-            reconstruct_inter_plane(
+            coded |= reconstruct_inter_plane(
                 reader,
                 &mut frame.y,
                 &references.get(reference).y,
@@ -159,7 +170,7 @@ fn reconstruct_block(
                 (&mut frame.cb, &references.get(reference).cb),
                 (&mut frame.cr, &references.get(reference).cr),
             ] {
-                reconstruct_inter_plane(
+                coded |= reconstruct_inter_plane(
                     reader,
                     plane,
                     reference_plane,
@@ -185,9 +196,15 @@ fn reconstruct_block(
                     },
                 )
                 .map_err(|_| invalid(frame_index, "motion_field.record"))?;
+            Ok(CodedBlock {
+                x,
+                y,
+                size: side,
+                intra: false,
+                coded,
+            })
         }
     }
-    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -201,7 +218,7 @@ fn reconstruct_intra_plane(
     qp: u8,
     plane_class: PlaneClass,
     frame_index: u32,
-) -> Result<(), DecodeError> {
+) -> Result<bool, DecodeError> {
     let prediction = predict_intra(plane, x, y, prediction_side, predict_mode(mode))
         .map_err(|_| invalid(frame_index, "intra.predict"))?;
     reconstruct_residual_plane(
@@ -231,11 +248,12 @@ fn reconstruct_inter_plane(
     plane_class: PlaneClass,
     frame_index: u32,
     skip: bool,
-) -> Result<(), DecodeError> {
+) -> Result<bool, DecodeError> {
     let prediction = predict_inter(reference, x, y, prediction_side, motion_vector, scale)
         .map_err(|_| invalid(frame_index, "inter.predict"))?;
     if skip {
-        return add_prediction(plane, x, y, prediction_side, &prediction, frame_index);
+        add_prediction(plane, x, y, prediction_side, &prediction, frame_index)?;
+        return Ok(false);
     }
     reconstruct_residual_plane(
         reader,
@@ -261,14 +279,16 @@ fn reconstruct_residual_plane(
     plane_class: PlaneClass,
     frame_index: u32,
     prediction: &[u8],
-) -> Result<(), DecodeError> {
+) -> Result<bool, DecodeError> {
     let transform_side = prediction_side.min(32);
     let transform = transform_size(transform_side, frame_index)?;
     let syntax_transform = syntax_transform_size(transform_side, frame_index)?;
     let blocks_per_axis = prediction_side / transform_side;
+    let mut coded = false;
     for transform_y in 0..blocks_per_axis {
         for transform_x in 0..blocks_per_axis {
             let levels = reader.read_coefficients(plane_class, syntax_transform)?;
+            coded |= levels.iter().any(|&level| level != 0);
             let coefficients = dequantize_block(&levels, qp)
                 .map_err(|_| invalid(frame_index, "residual.dequantize"))?;
             let residual = inverse_transform(&coefficients, transform)
@@ -286,7 +306,7 @@ fn reconstruct_residual_plane(
             )?;
         }
     }
-    Ok(())
+    Ok(coded)
 }
 
 fn add_prediction(

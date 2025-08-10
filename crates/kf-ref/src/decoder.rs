@@ -3,6 +3,7 @@ use kf_frame::{Frame, Plane};
 use crate::{
     ReferenceError,
     crc::crc32c,
+    deblock::{RefCodedBlock, loop_filter_frame},
     motion::{RefMotionField, RefMotionVector, RefReference, clamp_motion, predict_inter},
     predict::predict,
     range::ReferenceRange,
@@ -134,12 +135,13 @@ impl ReferenceDecoder {
             let mut frame = Frame::filled_420(padded_width, padded_height, 0)
                 .map_err(|_| ReferenceError::new(0, "frame.allocate"))?;
             let mut motion_field = RefMotionField::new(padded_width, padded_height)?;
+            let mut coded_blocks = Vec::new();
             for superblock_y in (0..padded_height).step_by(64) {
                 for superblock_x in (0..padded_width).step_by(64) {
                     let blocks = read_partition(&mut range, superblock_x, superblock_y)?;
                     for block in blocks {
                         let prediction = read_prediction(&mut range, packet.key)?;
-                        reconstruct_block(
+                        coded_blocks.push(reconstruct_block(
                             &mut range,
                             &mut frame,
                             &mut motion_field,
@@ -147,11 +149,12 @@ impl ReferenceDecoder {
                             block,
                             prediction,
                             packet.qp,
-                        )?;
+                        )?);
                     }
                     checkpoints.push(range.p1_values());
                 }
             }
+            loop_filter_frame(&mut frame, packet.qp, &coded_blocks)?;
             let final_contexts = range.contexts();
             let visible = frame
                 .crop_420(u32::from(width), u32::from(height))
@@ -190,11 +193,12 @@ fn reconstruct_block(
     block: RefBlock,
     prediction: RefPrediction,
     qp: u8,
-) -> Result<(), ReferenceError> {
+) -> Result<RefCodedBlock, ReferenceError> {
+    let mut coded = false;
     match prediction {
         RefPrediction::Intra(mode) => {
             let luma_prediction = predict(&frame.y, block.x, block.y, block.size, mode)?;
-            reconstruct_residual(
+            coded |= reconstruct_residual(
                 range,
                 &mut frame.y,
                 block.x,
@@ -207,7 +211,7 @@ fn reconstruct_block(
             for plane in [&mut frame.cb, &mut frame.cr] {
                 let chroma_prediction =
                     predict(plane, block.x / 2, block.y / 2, block.size / 2, mode)?;
-                reconstruct_residual(
+                coded |= reconstruct_residual(
                     range,
                     plane,
                     block.x / 2,
@@ -219,6 +223,13 @@ fn reconstruct_block(
                 )?;
             }
             motion_field.record_intra(block.x, block.y, block.size);
+            Ok(RefCodedBlock {
+                x: block.x,
+                y: block.y,
+                size: block.size,
+                intra: true,
+                coded,
+            })
         }
         RefPrediction::Skip(reference) | RefPrediction::Inter { reference, .. } => {
             let references =
@@ -249,7 +260,7 @@ fn reconstruct_block(
                 motion_vector,
                 false,
             );
-            reconstruct_inter_or_skip(
+            coded |= reconstruct_inter_or_skip(
                 range,
                 &mut frame.y,
                 block.x,
@@ -272,7 +283,7 @@ fn reconstruct_block(
                     motion_vector,
                     true,
                 );
-                reconstruct_inter_or_skip(
+                coded |= reconstruct_inter_or_skip(
                     range,
                     plane,
                     block.x / 2,
@@ -285,9 +296,15 @@ fn reconstruct_block(
                 )?;
             }
             motion_field.record_inter(block.x, block.y, block.size, reference, motion_vector);
+            Ok(RefCodedBlock {
+                x: block.x,
+                y: block.y,
+                size: block.size,
+                intra: false,
+                coded,
+            })
         }
     }
-    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -301,9 +318,10 @@ fn reconstruct_inter_or_skip(
     qp: u8,
     chroma: bool,
     skip: bool,
-) -> Result<(), ReferenceError> {
+) -> Result<bool, ReferenceError> {
     if skip {
-        return install_prediction(plane, x, y, side, prediction);
+        install_prediction(plane, x, y, side, prediction)?;
+        return Ok(false);
     }
     reconstruct_residual(range, plane, x, y, side, prediction, qp, chroma)
 }
@@ -318,14 +336,16 @@ fn reconstruct_residual(
     prediction: &[u8],
     qp: u8,
     chroma: bool,
-) -> Result<(), ReferenceError> {
+) -> Result<bool, ReferenceError> {
     let transform_side = prediction_side.min(32);
     let blocks_per_axis = prediction_side / transform_side;
     let transform_side_usize = usize::try_from(transform_side).unwrap();
     let prediction_side_usize = usize::try_from(prediction_side).unwrap();
+    let mut coded = false;
     for transform_y in 0..blocks_per_axis {
         for transform_x in 0..blocks_per_axis {
             let levels = read_coefficients(range, chroma, transform_side)?;
+            coded |= levels.iter().any(|&level| level != 0);
             let residual = inverse_levels(&levels, qp, transform_side_usize)?;
             for row in 0..transform_side_usize {
                 for column in 0..transform_side_usize {
@@ -348,7 +368,7 @@ fn reconstruct_residual(
             }
         }
     }
-    Ok(())
+    Ok(coded)
 }
 
 fn install_prediction(

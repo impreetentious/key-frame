@@ -9,3 +9,7 @@ decoders replay the same checkpoints so a context drift is visible at the first
 disagreeing superblock rather than only at the reconstructed frame. P-frames
 start from the prior committed bank; a syntax error discards the in-flight
 copy so a partial adaptation cannot become the next frame's state.
+
+After a frame is fully reconstructed, the integer deblocking filter runs
+before LAST or GOLDEN is updated. The filtered image is the reference; the
+unfiltered reconstruction is discarded.

@@ -3,6 +3,7 @@
 //! Independent, readability-first Key Frame reference decoder.
 
 mod crc;
+mod deblock;
 mod decoder;
 mod error;
 mod motion;

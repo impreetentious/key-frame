@@ -4,8 +4,9 @@ use kf_bitstream::{
 };
 use kf_frame::{Frame, Plane};
 use kf_predict::{
-    BlockMotion, IntraMode as PredictMode, MotionField, MotionVector as PredictMotionVector,
-    PlaneScale, ReferenceSlot, clamp_motion_vector, predict_inter, predict_intra,
+    BlockMotion, CodedBlock, IntraMode as PredictMode, MotionField,
+    MotionVector as PredictMotionVector, PlaneScale, ReferenceSlot, clamp_motion_vector,
+    deblock_frame, predict_inter, predict_intra,
 };
 use kf_range::{ContextBank, CoverageCounter};
 use kf_transform::{
@@ -231,6 +232,7 @@ impl IntraEncoder {
         let mut writer = SyntaxWriter::new(ContextBank::initial());
         let mut superblocks = Vec::new();
         let mut checkpoints = Vec::new();
+        let mut coded_blocks = Vec::new();
         for y in (0..padded_height).step_by(64) {
             for x in (0..padded_width).step_by(64) {
                 let choice = select_partition(
@@ -253,6 +255,7 @@ impl IntraEncoder {
                     let block_before = writer.stats().clone();
                     write_candidate(&mut writer, candidate, FrameType::Key)?;
                     let block_after = writer.stats().clone();
+                    coded_blocks.push(coded_block(candidate));
                     blocks.push(BlockAccounting {
                         x: candidate.x,
                         y: candidate.y,
@@ -288,6 +291,7 @@ impl IntraEncoder {
         }
         let coverage = writer.coverage().clone();
         let (encoded, _contexts) = writer.finish();
+        apply_loop_filter(&mut reconstructed, self.qp, &coded_blocks)?;
         let frame_flush_bytes = encoded
             .stats
             .emission_events
@@ -365,6 +369,7 @@ fn encode_video_frame(
     let mut writer = SyntaxWriter::new(contexts);
     let mut superblocks = Vec::new();
     let mut checkpoints = Vec::new();
+    let mut coded_blocks = Vec::new();
     for y in (0..padded_height).step_by(64) {
         for x in (0..padded_width).step_by(64) {
             let choice = select_partition(
@@ -387,6 +392,7 @@ fn encode_video_frame(
                 let block_before = writer.stats().clone();
                 write_candidate(&mut writer, candidate, frame_type)?;
                 let block_after = writer.stats().clone();
+                coded_blocks.push(coded_block(candidate));
                 blocks.push(BlockAccounting {
                     x: candidate.x,
                     y: candidate.y,
@@ -422,6 +428,7 @@ fn encode_video_frame(
     }
     let coverage = writer.coverage().clone();
     let (encoded, contexts) = writer.finish();
+    apply_loop_filter(&mut reconstructed, qp, &coded_blocks)?;
     let frame_flush_bytes = encoded
         .stats
         .emission_events
@@ -1141,6 +1148,27 @@ const fn predict_mode(mode: IntraMode) -> PredictMode {
         IntraMode::D117 => PredictMode::D117,
         IntraMode::D153 => PredictMode::D153,
     }
+}
+
+fn coded_block(candidate: &Candidate) -> CodedBlock {
+    CodedBlock {
+        x: candidate.x,
+        y: candidate.y,
+        size: u32::from(candidate.size.side()),
+        intra: matches!(candidate.prediction, Prediction::Intra(_)),
+        coded: candidate
+            .levels
+            .iter()
+            .any(|(_, _, levels)| levels.iter().any(|&level| level != 0)),
+    }
+}
+
+fn apply_loop_filter(
+    reconstructed: &mut Frame,
+    qp: u8,
+    blocks: &[CodedBlock],
+) -> Result<(), EncodeError> {
+    deblock_frame(reconstructed, qp, blocks).map_err(|_| reconstruction("reconstruction.deblock"))
 }
 
 const fn reconstruction(element: &'static str) -> EncodeError {
