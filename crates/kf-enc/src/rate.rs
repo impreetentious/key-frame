@@ -14,6 +14,33 @@ struct Tables {
     complexity_ewma_shift: u8,
 }
 
+/// Encoder rate policy. Constant QP is the correctness baseline.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RateControl {
+    /// One QP for every frame.
+    ConstantQp(u8),
+    /// Single-pass ABR targeting `bitrate_bps` bits per second.
+    Abr { bitrate_bps: u32 },
+}
+
+impl RateControl {
+    /// Accepts QP in `0..=63`.
+    pub fn constant_qp(qp: u8) -> Result<Self, EncodeError> {
+        if qp > 63 {
+            return Err(EncodeError::InvalidInput {
+                element: "frame.qp",
+            });
+        }
+        Ok(Self::ConstantQp(qp))
+    }
+
+    /// Validates that a controller can be constructed for this rate and fps.
+    pub fn abr(bitrate_bps: u32, fps_num: u16, fps_den: u16) -> Result<Self, EncodeError> {
+        let _controller = RateController::new(bitrate_bps, fps_num, fps_den)?;
+        Ok(Self::Abr { bitrate_bps })
+    }
+}
+
 /// Q16.16 leaky-bucket ABR controller.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RateController {

@@ -17,10 +17,11 @@ fn main() -> ExitCode {
 fn run(arguments: Vec<String>) -> Result<(), String> {
     let input = value(&arguments, "--input")?;
     let output = value(&arguments, "--output")?;
-    let qp = optional_value(&arguments, "--qp")
-        .unwrap_or("32")
-        .parse::<u8>()
-        .map_err(|_| "--qp must be an integer from 0 through 63".to_owned())?;
+    let qp_flag = optional_value(&arguments, "--qp");
+    let bitrate_flag = optional_value(&arguments, "--bitrate");
+    if qp_flag.is_some() && bitrate_flag.is_some() {
+        return Err("--qp and --bitrate are mutually exclusive".to_owned());
+    }
     let keyframe_interval = optional_value(&arguments, "--kf-interval")
         .unwrap_or("120")
         .parse::<u16>()
@@ -41,8 +42,19 @@ fn run(arguments: Vec<String>) -> Result<(), String> {
         golden_interval,
     )
     .map_err(|error| error.to_string())?;
-    let encoded = Encoder::new(sequence, qp)
-        .map_err(|error| error.to_string())?
+    let encoder = if let Some(bitrate) = bitrate_flag {
+        let bitrate = bitrate
+            .parse::<u32>()
+            .map_err(|_| "--bitrate must be a positive integer".to_owned())?;
+        Encoder::with_bitrate(sequence, bitrate).map_err(|error| error.to_string())?
+    } else {
+        let qp = qp_flag
+            .unwrap_or("32")
+            .parse::<u8>()
+            .map_err(|_| "--qp must be an integer from 0 through 63".to_owned())?;
+        Encoder::new(sequence, qp).map_err(|error| error.to_string())?
+    };
+    let encoded = encoder
         .encode(&y4m.frames)
         .map_err(|error| error.to_string())?;
     fs::write(output, &encoded.bytes).map_err(|error| error.to_string())?;
@@ -82,6 +94,7 @@ fn reject_unknown(arguments: &[String]) -> Result<(), String> {
         "--input",
         "--output",
         "--qp",
+        "--bitrate",
         "--kf-interval",
         "--golden-interval",
     ];

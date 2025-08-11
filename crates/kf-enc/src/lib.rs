@@ -13,4 +13,4 @@ pub use encoder::{
 };
 pub use error::EncodeError;
 pub use gop::{FrameDecision, GopPlanner};
-pub use rate::RateController;
+pub use rate::{RateControl, RateController};

@@ -73,3 +73,78 @@ fn command_line_encode_decode_and_probe_round_trip() {
 
     fs::remove_dir_all(test_dir).unwrap();
 }
+
+#[test]
+fn command_line_bitrate_and_qp_are_exclusive() {
+    let test_dir = std::env::temp_dir().join(format!("key-frame-cli-abr-{}", std::process::id()));
+    if test_dir.exists() {
+        fs::remove_dir_all(&test_dir).unwrap();
+    }
+    fs::create_dir(&test_dir).unwrap();
+    let input = test_dir.join("input.y4m");
+    let stream_path = test_dir.join("output.kfv");
+    let source = Y4mStream {
+        width: 64,
+        height: 64,
+        fps_num: 24,
+        fps_den: 1,
+        frames: vec![
+            Frame::filled_420(64, 64, 80).unwrap(),
+            Frame::filled_420(64, 64, 96).unwrap(),
+        ],
+    };
+    fs::write(&input, encode_y4m(&source).unwrap()).unwrap();
+
+    let both = Command::new(env!("CARGO_BIN_EXE_kfenc"))
+        .args([
+            "--input",
+            input.to_str().unwrap(),
+            "--output",
+            stream_path.to_str().unwrap(),
+            "--qp",
+            "28",
+            "--bitrate",
+            "80000",
+        ])
+        .output()
+        .unwrap();
+    assert!(!both.status.success());
+    assert!(
+        String::from_utf8_lossy(&both.stderr).contains("mutually exclusive"),
+        "{}",
+        String::from_utf8_lossy(&both.stderr)
+    );
+
+    let first = Command::new(env!("CARGO_BIN_EXE_kfenc"))
+        .args([
+            "--input",
+            input.to_str().unwrap(),
+            "--output",
+            stream_path.to_str().unwrap(),
+            "--bitrate",
+            "80000",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        first.status.success(),
+        "{}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    let first_bytes = fs::read(&stream_path).unwrap();
+    let second = Command::new(env!("CARGO_BIN_EXE_kfenc"))
+        .args([
+            "--input",
+            input.to_str().unwrap(),
+            "--output",
+            stream_path.to_str().unwrap(),
+            "--bitrate",
+            "80000",
+        ])
+        .output()
+        .unwrap();
+    assert!(second.status.success());
+    assert_eq!(first_bytes, fs::read(&stream_path).unwrap());
+
+    fs::remove_dir_all(test_dir).unwrap();
+}

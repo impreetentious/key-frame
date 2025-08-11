@@ -14,7 +14,8 @@ use kf_transform::{
     quantize_block,
 };
 
-use crate::{EncodeError, FrameDecision, GopPlanner, motion_search::estimate_motion};
+use crate::motion_search::estimate_motion;
+use crate::{EncodeError, FrameDecision, GopPlanner, RateControl, RateController};
 
 /// Canonical replay accounting for one encoded coding block.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -64,17 +65,30 @@ pub struct EncodedStream {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Encoder {
     sequence: SequenceHeader,
-    qp: u8,
+    rate: RateControl,
 }
 
 impl Encoder {
+    /// Constant-QP encoder. This remains the correctness baseline.
     pub fn new(sequence: SequenceHeader, qp: u8) -> Result<Self, EncodeError> {
-        if qp > 63 {
-            return Err(EncodeError::InvalidInput {
-                element: "frame.qp",
-            });
-        }
-        Ok(Self { sequence, qp })
+        Ok(Self {
+            sequence,
+            rate: RateControl::constant_qp(qp)?,
+        })
+    }
+
+    /// Single-pass ABR encoder. Per-frame QP comes from the leaky bucket.
+    pub fn with_bitrate(sequence: SequenceHeader, bitrate_bps: u32) -> Result<Self, EncodeError> {
+        Ok(Self {
+            sequence,
+            rate: RateControl::abr(bitrate_bps, sequence.fps_num, sequence.fps_den)?,
+        })
+    }
+
+    /// Rate policy this encoder will apply.
+    #[must_use]
+    pub const fn rate(&self) -> RateControl {
+        self.rate
     }
 
     /// Encodes the canonical deterministic IPPP stream with authoritative key
@@ -99,6 +113,14 @@ impl Encoder {
         let mut previous_source = None;
         let mut checkpoints = Vec::new();
         let mut coverage = CoverageCounter::new();
+        let mut controller = match self.rate {
+            RateControl::ConstantQp(_) => None,
+            RateControl::Abr { bitrate_bps } => Some(RateController::new(
+                bitrate_bps,
+                self.sequence.fps_num,
+                self.sequence.fps_den,
+            )?),
+        };
 
         for (frame_index, source) in frames.iter().enumerate() {
             let frame_index =
@@ -119,10 +141,19 @@ impl Encoder {
                 (Some(last), Some(golden)) => Some(ReferenceFrames { last, golden }),
                 _ => None,
             };
+            let qp = if let Some(controller) = &controller {
+                controller.qp()
+            } else if let RateControl::ConstantQp(qp) = self.rate {
+                qp
+            } else {
+                return Err(EncodeError::Policy {
+                    element: "rate.controller",
+                });
+            };
             let encoded = encode_video_frame(
                 source,
                 frame_index,
-                self.qp,
+                qp,
                 frame_type,
                 decision,
                 contexts,
@@ -142,7 +173,17 @@ impl Encoder {
             if decision.key || decision.golden_refresh {
                 golden = Some(encoded.reconstructed);
             }
-            bytes.extend_from_slice(&encoded.packet.encode());
+            let packet_bytes = encoded.packet.encode();
+            if let Some(controller) = controller.as_mut() {
+                if let Some(sad) = transition_sad {
+                    controller.observe_complexity(sad);
+                }
+                let frame_bits = u64::try_from(packet_bytes.len())
+                    .unwrap_or(u64::MAX)
+                    .saturating_mul(8);
+                controller.commit_frame_bits(frame_bits);
+            }
+            bytes.extend_from_slice(&packet_bytes);
             accounting.push(encoded.accounting);
             checkpoints.extend(encoded.checkpoints);
             coverage.merge(&encoded.coverage);

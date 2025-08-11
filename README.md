@@ -89,6 +89,7 @@ current Node.js LTS release. Encode, decode, and inspect an 8-bit 4:2:0 input:
 ```sh
 cargo run --release -p kf-tools --bin kfenc -- \
   --input input.y4m --qp 32 --output output.kfv
+# or: --bitrate 400000 in place of --qp
 cargo run --release -p kf-tools --bin kfdec -- \
   output.kfv --output decoded.y4m
 cargo run --release -p kf-tools --bin kfprobe -- output.kfv
@@ -130,4 +131,4 @@ preflight green.
 
 ---
 
-**Version:** v0.10.1
+**Version:** v0.10.2
