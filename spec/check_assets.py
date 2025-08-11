@@ -145,6 +145,39 @@ def main():
     if array(V1 / "quant.toml", "lambda_q8") != lambda_q8:
         errors.append("quant.toml lambda_q8 differs from C.4")
 
+    first_qp = [max(0, 63 - 2 * index) for index in range(32)]
+    if array(V1 / "quant.toml", "first_qp") != first_qp:
+        errors.append("quant.toml first_qp differs from 63-2*i")
+    if scalar_int(V1 / "quant.toml", "fractional_bits") != 16:
+        errors.append("quant.toml fractional_bits must be 16")
+    if scalar_int(V1 / "quant.toml", "window_frames") != 8:
+        errors.append("quant.toml window_frames must be 8")
+    if scalar_int(V1 / "quant.toml", "bucket_multiple") != 2:
+        errors.append("quant.toml bucket_multiple must be 2")
+    if scalar_int(V1 / "quant.toml", "maximum_qp_step") != 2:
+        errors.append("quant.toml maximum_qp_step must be 2")
+
+    def next_qp(fill, capacity, qp, step=2):
+        low = capacity // 3
+        high = (2 * capacity) // 3
+        if fill < low:
+            return max(0, qp - step)
+        if fill > high:
+            return min(63, qp + step)
+        return qp
+
+    rc_text = (V1 / "quant.toml").read_text(encoding="utf-8")
+    rc_cases = re.findall(
+        r'\[\[rc_vectors\]\]\nname = "([^"]+)"\nfill_bits = (\d+)\ncapacity_bits = (\d+)\nqp_in = (\d+)\nqp_out = (\d+)',
+        rc_text,
+    )
+    if len(rc_cases) != 5:
+        errors.append("quant.toml must contain 5 reviewed rate-control vectors")
+    for name, fill_text, capacity_text, qp_in_text, qp_out_text in rc_cases:
+        got = next_qp(int(fill_text), int(capacity_text), int(qp_in_text))
+        if got != int(qp_out_text):
+            errors.append("rate-control vector %s expected %s got %s" % (name, qp_out_text, got))
+
     def mc_sample(source, width, height, x, y):
         x = max(0, min(width - 1, x))
         y = max(0, min(height - 1, y))

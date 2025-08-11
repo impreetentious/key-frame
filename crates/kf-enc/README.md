@@ -10,6 +10,9 @@ disagreeing superblock rather than only at the reconstructed frame. P-frames
 start from the prior committed bank; a syntax error discards the in-flight
 copy so a partial adaptation cannot become the next frame's state.
 
+A Q16.16 leaky-bucket controller can choose per-frame QP from a target
+bitrate. Fill saturates inside a bucket sized at twice the per-frame budget
+times an eight-frame window; QP steps at most two from the bucket's thirds.
 After a frame is fully reconstructed, the integer deblocking filter runs
 before LAST or GOLDEN is updated. The filtered image is the reference; the
 unfiltered reconstruction is discarded.

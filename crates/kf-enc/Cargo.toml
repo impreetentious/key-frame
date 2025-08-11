@@ -11,6 +11,7 @@ kf-bitstream = { path = "../kf-bitstream" }
 kf-frame = { path = "../kf-frame" }
 kf-predict = { path = "../kf-predict" }
 kf-range = { path = "../kf-range" }
+kf-spec = { path = "../kf-spec" }
 kf-transform = { path = "../kf-transform" }
 
 [dev-dependencies]

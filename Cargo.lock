@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "kf-bitstream"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "kf-core",
  "kf-range",
@@ -13,11 +13,11 @@ dependencies = [
 
 [[package]]
 name = "kf-core"
-version = "0.10.0"
+version = "0.10.1"
 
 [[package]]
 name = "kf-dec"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "kf-bitstream",
  "kf-frame",
@@ -29,7 +29,7 @@ dependencies = [
 
 [[package]]
 name = "kf-enc"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "kf-bitstream",
  "kf-dec",
@@ -37,17 +37,18 @@ dependencies = [
  "kf-predict",
  "kf-range",
  "kf-ref",
+ "kf-spec",
  "kf-tools",
  "kf-transform",
 ]
 
 [[package]]
 name = "kf-frame"
-version = "0.10.0"
+version = "0.10.1"
 
 [[package]]
 name = "kf-predict"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "kf-frame",
  "kf-spec",
@@ -55,14 +56,14 @@ dependencies = [
 
 [[package]]
 name = "kf-range"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "kf-spec",
 ]
 
 [[package]]
 name = "kf-ref"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "kf-frame",
  "kf-spec",
@@ -70,11 +71,11 @@ dependencies = [
 
 [[package]]
 name = "kf-spec"
-version = "0.10.0"
+version = "0.10.1"
 
 [[package]]
 name = "kf-tools"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "kf-bitstream",
  "kf-dec",
@@ -86,7 +87,7 @@ dependencies = [
 
 [[package]]
 name = "kf-transform"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "kf-core",
  "kf-spec",
