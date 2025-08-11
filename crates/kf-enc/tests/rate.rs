@@ -87,6 +87,15 @@ fn trap_rc_bucket_bounds() {
 }
 
 #[test]
+fn bucket_starts_in_the_middle_third() {
+    let controller = RateController::new(120_000, 30, 1).unwrap();
+    let low = controller.capacity_q16() / 3;
+    let high = (2 * controller.capacity_q16()) / 3;
+    assert!(controller.fill_q16() > low);
+    assert!(controller.fill_q16() < high);
+}
+
+#[test]
 fn rate_controller_is_deterministic() {
     let mut first = RateController::new(500_000, 24, 1).unwrap();
     let mut second = RateController::new(500_000, 24, 1).unwrap();

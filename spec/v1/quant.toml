@@ -13,6 +13,7 @@ bucket_multiple = 2
 maximum_qp_step = 2
 complexity_ewma_shift = 3
 fill_update = "saturating fill + (frame_bits<<16) - budget_q16, clamped to [0, capacity]"
+initial_fill = "capacity/2"
 qp_step = "fill thirds of capacity; below lower third subtract step, above upper third add step"
 first_qp = [63, 61, 59, 57, 55, 53, 51, 49, 47, 45, 43, 41, 39, 37, 35, 33, 31, 29, 27, 25, 23, 21, 19, 17, 15, 13, 11, 9, 7, 5, 3, 1]
 # first_qp[i] = max(0, 63-2*i) for i = min(31, floor(log2(per_frame_budget_bits)))

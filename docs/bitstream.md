@@ -234,7 +234,7 @@ The SHA-256 values below identify the literal inputs used for this rendering.
 | `mc-vectors.toml` | `88c3901b4c107d2a11be883bb6e5bf1f039803659eaa82a6b87d577ff0bde6b3` |
 | `mc.toml` | `f15dc6b79f647d9ef9e11484618e702d8dccb9e16ee63069b98b64f7f2c31ef1` |
 | `probe.schema.json` | `1a369a113ea65cbdbb3ed120224e98b5014a9c14c85fdcfb99dc5a3d7f3695c9` |
-| `quant.toml` | `f8ac8a635c0c99bda505a88a206e14b372719a81362c796a4249c9555a615289` |
+| `quant.toml` | `b494a97432eea23a29c8587d4c43b2a64537b4290ca7b8424090e619618c0d5d` |
 | `scans.toml` | `231a562dfbc01351511587be5a201bff1907168b670580bd8967a6551923fb78` |
 | `search.toml` | `7cfc0e02e0e3a4994c109d3746dc9997b53a92d553e96f446bc08c5362767aa5` |
 | `syntax.toml` | `92467acd24f90bf69448624f536de514ffcb72849b17be202a5cd8e29e08689a` |

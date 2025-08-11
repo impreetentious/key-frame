@@ -55,6 +55,8 @@ pub struct RateController {
 
 impl RateController {
     /// Builds a controller for a strictly positive bitrate and frame rate.
+    /// Fill starts at half capacity so the first frame's QP sits in the
+    /// middle third rather than immediately starving the bucket.
     pub fn new(bitrate_bps: u32, fps_num: u16, fps_den: u16) -> Result<Self, EncodeError> {
         if bitrate_bps == 0 || fps_num == 0 || fps_den == 0 {
             return Err(EncodeError::InvalidInput {
@@ -78,7 +80,7 @@ impl RateController {
         Ok(Self {
             budget_q16,
             capacity_q16,
-            fill_q16: 0,
+            fill_q16: capacity_q16 / 2,
             qp,
             complexity: 0,
             step: tables.maximum_qp_step,

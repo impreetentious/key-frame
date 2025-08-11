@@ -156,6 +156,9 @@ def main():
         errors.append("quant.toml bucket_multiple must be 2")
     if scalar_int(V1 / "quant.toml", "maximum_qp_step") != 2:
         errors.append("quant.toml maximum_qp_step must be 2")
+    rc_header = (V1 / "quant.toml").read_text(encoding="utf-8")
+    if 'initial_fill = "capacity/2"' not in rc_header:
+        errors.append("quant.toml initial_fill must be capacity/2")
 
     def next_qp(fill, capacity, qp, step=2):
         low = capacity // 3
