@@ -1,0 +1,20 @@
+[package]
+name = "kf-fuzz"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "kf-fuzz-campaign"
+path = "src/bin/kf-fuzz-campaign.rs"
+
+[dependencies]
+kf-core = { path = "../kf-core" }
+kf-dec = { path = "../kf-dec" }
+kf-frame = { path = "../kf-frame" }
+kf-ref = { path = "../kf-ref" }
+
+[lints]
+workspace = true

@@ -8,6 +8,7 @@ use crate::{
     predict::predict,
     range::ReferenceRange,
     reader::ByteReader,
+    scan::PacketCursor,
     syntax::{RefBlock, RefPrediction, read_coefficients, read_partition, read_prediction},
     transform::inverse_levels,
 };
@@ -25,15 +26,6 @@ impl<'a> RefFrames<'a> {
             RefReference::Golden => self.golden,
         }
     }
-}
-
-struct RefPacket<'a> {
-    payload: &'a [u8],
-    frame_index: u32,
-    qp: u8,
-    key: bool,
-    golden_refresh: bool,
-    consumed: usize,
 }
 
 /// Independent decode state. Frames and contexts commit only after success.
@@ -97,17 +89,17 @@ impl ReferenceDecoder {
         &mut self,
         bytes: &[u8],
     ) -> Result<(Vec<Frame>, Vec<[u16; 144]>), ReferenceError> {
-        let (width, height, mut packet_offset) = read_sequence(bytes)?;
+        let (width, height, packet_start) = read_sequence(bytes)?;
         let mut frames = Vec::new();
         let mut checkpoints = Vec::new();
-        while packet_offset < bytes.len() {
-            let packet = read_packet(&bytes[packet_offset..])?;
+        let mut cursor = PacketCursor::new(&bytes[packet_start..]);
+        while let Some(packet) = cursor.next_packet()? {
             let expected_index = self
                 .last_frame_index
                 .map_or(0, |index| index.saturating_add(1));
             if packet.frame_index != expected_index {
                 return Err(ReferenceError::new(
-                    u32::try_from(packet_offset + 8).unwrap_or(u32::MAX),
+                    packet.frame_index,
                     "packet.frame_index_gap",
                 ));
             }
@@ -116,10 +108,7 @@ impl ReferenceDecoder {
                 _ => None,
             };
             if !packet.key && references.is_none() {
-                return Err(ReferenceError::new(
-                    u32::try_from(packet_offset + 12).unwrap_or(u32::MAX),
-                    "pframe.references",
-                ));
+                return Err(ReferenceError::new(packet.frame_index, "pframe.references"));
             }
             let mut range = if packet.key {
                 ReferenceRange::new(packet.payload)?
@@ -167,9 +156,6 @@ impl ReferenceDecoder {
             self.contexts = Some(final_contexts);
             self.last_frame_index = Some(packet.frame_index);
             frames.push(visible);
-            packet_offset = packet_offset
-                .checked_add(packet.consumed)
-                .ok_or_else(|| ReferenceError::new(u32::MAX, "packet.offset"))?;
         }
         if frames.is_empty() {
             return Err(ReferenceError::new(0, "initial_keyframe"));
@@ -426,47 +412,4 @@ fn read_sequence(bytes: &[u8]) -> Result<(u16, u16, usize), ReferenceError> {
         return Err(ReferenceError::new(20, "sequence.crc"));
     }
     Ok((width, height, reader.offset()))
-}
-
-fn read_packet(bytes: &[u8]) -> Result<RefPacket<'_>, ReferenceError> {
-    let mut reader = ByteReader::new(bytes);
-    if reader.bytes(4, "packet.sync")? != b"KFP1" {
-        return Err(ReferenceError::new(0, "packet.sync"));
-    }
-    let payload_len = reader.u32("packet.payload_len")?;
-    if !(5..=16 * 1024 * 1024).contains(&payload_len) {
-        return Err(ReferenceError::new(4, "packet.payload_len"));
-    }
-    let frame_index = reader.u32("packet.frame_index")?;
-    let flag_bits = reader.u8("packet.flags")?;
-    let key = flag_bits & 1 != 0;
-    let golden_refresh = flag_bits & 2 != 0;
-    let show = flag_bits & 4 != 0;
-    if flag_bits & 0xf8 != 0 || !show || (key && !golden_refresh) {
-        return Err(ReferenceError::new(12, "packet.flags"));
-    }
-    let qp = reader.u8("packet.qp")?;
-    if qp > 63 || reader.u16("packet.reserved")? != 0 {
-        return Err(ReferenceError::new(13, "packet.qp_or_reserved"));
-    }
-    let header_crc = reader.u32("packet.header_crc")?;
-    let payload_crc = reader.u32("packet.payload_crc")?;
-    if crc32c(&bytes[4..16]) != header_crc {
-        return Err(ReferenceError::new(16, "packet.header_crc"));
-    }
-    let payload = reader.bytes(
-        usize::try_from(payload_len).map_err(|_| ReferenceError::new(4, "packet.payload_len"))?,
-        "packet.payload",
-    )?;
-    if crc32c(payload) != payload_crc {
-        return Err(ReferenceError::new(20, "packet.payload_crc"));
-    }
-    Ok(RefPacket {
-        payload,
-        frame_index,
-        qp,
-        key,
-        golden_refresh,
-        consumed: reader.offset(),
-    })
 }

@@ -10,6 +10,7 @@ mod motion;
 mod predict;
 mod range;
 mod reader;
+mod scan;
 mod syntax;
 mod transform;
 
