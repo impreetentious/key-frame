@@ -251,11 +251,17 @@ fn insert_false_sync(rng: &mut Xoshiro256PlusPlus, bytes: &mut Vec<u8>) {
     bytes.splice(at..at, injected);
 }
 
+/// Packet-header bytes this mutation rewrites: the declared payload length at
+/// `+4` and the header CRC at `+16`. The mutation must not run unless all of
+/// them are present, or the harness itself panics and the campaign reports it
+/// as a decoder crash.
+const LIED_HEADER_SPAN: usize = 20;
+
 fn lie_about_payload_len(rng: &mut Xoshiro256PlusPlus, bytes: &mut [u8]) {
     let Some(start) = packet_starts(bytes).first().copied() else {
         return;
     };
-    if start + 16 > bytes.len() {
+    if start.saturating_add(LIED_HEADER_SPAN) > bytes.len() {
         return;
     }
     let lied = 5 + take(rng, 4096);
@@ -283,4 +289,38 @@ fn take(rng: &mut Xoshiro256PlusPlus, max_exclusive: u32) -> u32 {
 
 fn hex_preview(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rng() -> Xoshiro256PlusPlus {
+        Xoshiro256PlusPlus::from_state([1, 2, 3, 4])
+    }
+
+    /// A sync word close enough to the end that the header is incomplete must
+    /// leave the buffer alone rather than index past it.
+    #[test]
+    fn payload_len_lie_skips_a_truncated_header() {
+        for extra in 0..LIED_HEADER_SPAN {
+            let mut bytes = b"KFP1".to_vec();
+            bytes.extend(std::iter::repeat_n(0xAA, extra.saturating_sub(4)));
+            bytes.truncate(extra.max(4));
+            let before = bytes.clone();
+            lie_about_payload_len(&mut rng(), &mut bytes);
+            assert_eq!(bytes, before, "mutated a {extra}-byte truncated header");
+        }
+    }
+
+    /// A full header is still rewritten, so the guard did not disable the case.
+    #[test]
+    fn payload_len_lie_rewrites_a_complete_header() {
+        let mut bytes = b"KFP1".to_vec();
+        bytes.extend(std::iter::repeat_n(0u8, LIED_HEADER_SPAN));
+        let before = bytes.clone();
+        lie_about_payload_len(&mut rng(), &mut bytes);
+        assert_ne!(bytes, before);
+        assert_eq!(bytes.len(), before.len());
+    }
 }

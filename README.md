@@ -55,9 +55,10 @@ threading, no container format, no network streaming, and no GPU path.
 The bitstream is original, so nothing else decodes a `.kfv` file. Compression
 efficiency is not competitive with production codecs and is never presented as
 if it were; every published rate–distortion number is self-measured on a named
-corpus with the encoder build that produced it. The encoder is scalar,
-single-threaded, and constant-QP — it optimizes for a decision you can follow
-rather than for speed or for a bitrate target. Damage handling is limited to
+corpus with the encoder build that produced it. The encoder is scalar and
+single-threaded, and it optimizes for a decision you can follow rather than for
+speed; its average-bitrate mode is a single-pass leaky bucket that holds a
+target across a clip, not a per-frame guarantee. Damage handling is limited to
 detection and dependency invalidation: a corrupt frame is never concealed,
 never partially applied, and never allowed into later prediction, but nothing is
 reconstructed from it either. Linux x86_64 and macOS arm64 are the supported
@@ -78,8 +79,9 @@ Rust 1.87.0 · edition 2024 · Bash · Node.js for repository checks
   Rust implementation.
 - [`conformance/`](conformance/) holds committed streams with their decoded
   hashes, reproduced on both native targets in continuous integration.
-- [`corpus/`](corpus/) pins the source clips used for measurement; the video
-  itself is fetched, never redistributed.
+- [`corpus/`](corpus/) pins the source clips used for measurement and for the
+  bit-exactness proof on natural video; the clips themselves are fetched by
+  checksum, never redistributed.
 
 ## Run locally
 
@@ -105,9 +107,9 @@ One command runs every gate, in the order continuous integration runs them:
 
 It checks version, documentation, license, and specification coherence, then the
 range-coder, transform, bitstream, syntax, reference-decoder, probe, intra,
-conformance, inter, entropy, deblock, rate-control, and decoder-campaign gates, then formatting, lints, the
-forbidden-API and decoder-boundary scan, the full test suite, and the
-documentation build.
+conformance, inter, entropy, deblock, natural-corpus, rate-control, and
+decoder-campaign gates, then formatting, lints, the forbidden-API and
+decoder-boundary scan, the full test suite, and the documentation build.
 
 ## Build and deploy
 
@@ -131,4 +133,4 @@ preflight green.
 
 ---
 
-**Version:** v0.11.1
+**Version:** v0.11.2
