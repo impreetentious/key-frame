@@ -1,6 +1,6 @@
 use crate::{
-    BitstreamError, FrameType, IntraMode, MotionVector, Prediction, ReferenceFrame, SyntaxReader,
-    SyntaxWriter,
+    BitstreamError, FrameType, IntraMode, MotionVector, Prediction, ReferenceFrame, SyntaxElement,
+    SyntaxReader, SyntaxWriter,
 };
 
 const MAX_MVD_MAGNITUDE: u32 = 512;
@@ -16,16 +16,21 @@ impl SyntaxWriter {
             (FrameType::Key, Prediction::Intra(mode)) => self.write_intra_mode(mode),
             (FrameType::Key, _) => Err(invalid("prediction.key_inter")),
             (FrameType::P, Prediction::Skip { reference }) => {
+                self.record_element(SyntaxElement::Skip);
                 self.context(12, true)?;
                 self.write_reference(reference)
             }
             (FrameType::P, Prediction::Intra(mode)) => {
+                self.record_element(SyntaxElement::Skip);
                 self.context(12, false)?;
+                self.record_element(SyntaxElement::IsInter);
                 self.context(15, false)?;
                 self.write_intra_mode(mode)
             }
             (FrameType::P, Prediction::Inter { reference, mvd }) => {
+                self.record_element(SyntaxElement::Skip);
                 self.context(12, false)?;
+                self.record_element(SyntaxElement::IsInter);
                 self.context(15, true)?;
                 self.write_reference(reference)?;
                 self.write_mvd(mvd)
@@ -34,6 +39,7 @@ impl SyntaxWriter {
     }
 
     fn write_intra_mode(&mut self, mode: IntraMode) -> Result<(), BitstreamError> {
+        self.record_element(SyntaxElement::IntraMode);
         let index = mode.index();
         for (shift, context) in [(2, 18), (1, 21), (0, 22)] {
             self.context(context, ((index >> shift) & 1) != 0)?;
@@ -42,10 +48,12 @@ impl SyntaxWriter {
     }
 
     fn write_reference(&mut self, reference: ReferenceFrame) -> Result<(), BitstreamError> {
+        self.record_element(SyntaxElement::RefSelect);
         self.context(28, reference == ReferenceFrame::Golden)
     }
 
     fn write_mvd(&mut self, mvd: MotionVector) -> Result<(), BitstreamError> {
+        self.record_element(SyntaxElement::Mvd);
         self.write_signed_exp_golomb(mvd.x_q4, 30)?;
         self.write_signed_exp_golomb(mvd.y_q4, 33)
     }
@@ -89,11 +97,13 @@ impl SyntaxReader<'_> {
         if frame_type == FrameType::Key {
             return Ok(Prediction::Intra(self.read_intra_mode()?));
         }
+        self.record_element(SyntaxElement::Skip);
         if self.context(12)? {
             return Ok(Prediction::Skip {
                 reference: self.read_reference()?,
             });
         }
+        self.record_element(SyntaxElement::IsInter);
         if !self.context(15)? {
             return Ok(Prediction::Intra(self.read_intra_mode()?));
         }
@@ -104,6 +114,7 @@ impl SyntaxReader<'_> {
     }
 
     fn read_intra_mode(&mut self) -> Result<IntraMode, BitstreamError> {
+        self.record_element(SyntaxElement::IntraMode);
         let mut index = 0_u8;
         for context in [18, 21, 22] {
             index = (index << 1) | u8::from(self.context(context)?);
@@ -112,6 +123,7 @@ impl SyntaxReader<'_> {
     }
 
     fn read_reference(&mut self) -> Result<ReferenceFrame, BitstreamError> {
+        self.record_element(SyntaxElement::RefSelect);
         Ok(if self.context(28)? {
             ReferenceFrame::Golden
         } else {
@@ -120,6 +132,7 @@ impl SyntaxReader<'_> {
     }
 
     fn read_mvd(&mut self) -> Result<MotionVector, BitstreamError> {
+        self.record_element(SyntaxElement::Mvd);
         Ok(MotionVector {
             x_q4: self.read_signed_exp_golomb(30)?,
             y_q4: self.read_signed_exp_golomb(33)?,

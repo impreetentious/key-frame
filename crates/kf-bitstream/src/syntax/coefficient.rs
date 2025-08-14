@@ -1,5 +1,5 @@
 use crate::{
-    BitstreamError, PlaneClass, SyntaxReader, SyntaxWriter, TransformBlockSize,
+    BitstreamError, PlaneClass, SyntaxElement, SyntaxReader, SyntaxWriter, TransformBlockSize,
     syntax::scan::diagonal_scan,
 };
 
@@ -21,6 +21,7 @@ impl SyntaxWriter {
             return Err(invalid("coefficient.level_cap"));
         }
         let has_coeff = levels.iter().any(|&level| level != 0);
+        self.record_element(SyntaxElement::HasCoeff);
         self.context(has_coeff_context(plane, size), has_coeff)?;
         if !has_coeff {
             return Ok(());
@@ -41,6 +42,7 @@ impl SyntaxWriter {
         for (scan_position, &index) in scan.iter().enumerate().take(last_scan + 1) {
             let significant = levels[index] != 0;
             if scan_position != last_scan {
+                self.record_element(SyntaxElement::Sig);
                 self.context(significance_context(size, nonzero_count), significant)?;
                 if !significant {
                     continue;
@@ -58,6 +60,11 @@ impl SyntaxWriter {
         vertical: bool,
         size: TransformBlockSize,
     ) -> Result<(), BitstreamError> {
+        self.record_element(if vertical {
+            SyntaxElement::LastY
+        } else {
+            SyntaxElement::LastX
+        });
         let base = (if vertical { 60 } else { 44 }) + size.group() * 4;
         for bit_index in 0..size.position_bits() {
             let shift = size.position_bits() - bit_index - 1;
@@ -82,18 +89,22 @@ impl SyntaxWriter {
             return Err(invalid("coefficient.nonzero_level"));
         }
         let gt1 = magnitude > 1;
+        self.record_element(SyntaxElement::Gt1);
         self.context(120 + size.group() * 4 + nonzero_count.min(3), gt1)?;
         if gt1 {
             let gt2 = magnitude > 2;
+            self.record_element(SyntaxElement::Gt2);
             self.context(136 + size.group() * 2 + nonzero_count.min(1), gt2)?;
             if gt2 {
                 self.write_unsigned_bypass(magnitude - 3)?;
             }
         }
+        self.record_element(SyntaxElement::NonzeroSign);
         self.bypass(level < 0)
     }
 
     fn write_unsigned_bypass(&mut self, value: u32) -> Result<(), BitstreamError> {
+        self.record_element(SyntaxElement::RiceRemainder);
         let code_number = value + 1;
         let prefix = 31 - code_number.leading_zeros();
         for _ in 0..prefix {
@@ -115,6 +126,7 @@ impl SyntaxReader<'_> {
         size: TransformBlockSize,
     ) -> Result<Vec<i32>, BitstreamError> {
         let mut levels = vec![0_i32; size.side() * size.side()];
+        self.record_element(SyntaxElement::HasCoeff);
         if !self.context(has_coeff_context(plane, size))? {
             return Ok(levels);
         }
@@ -135,6 +147,7 @@ impl SyntaxReader<'_> {
             let significant = if scan_position == last_scan {
                 true
             } else {
+                self.record_element(SyntaxElement::Sig);
                 self.context(significance_context(size, nonzero_count))?
             };
             if significant {
@@ -153,6 +166,11 @@ impl SyntaxReader<'_> {
         vertical: bool,
         size: TransformBlockSize,
     ) -> Result<usize, BitstreamError> {
+        self.record_element(if vertical {
+            SyntaxElement::LastY
+        } else {
+            SyntaxElement::LastX
+        });
         let base = (if vertical { 60 } else { 44 }) + size.group() * 4;
         let mut value = 0_usize;
         for bit_index in 0..size.position_bits() {
@@ -171,20 +189,25 @@ impl SyntaxReader<'_> {
         size: TransformBlockSize,
         nonzero_count: u16,
     ) -> Result<i32, BitstreamError> {
+        self.record_element(SyntaxElement::Gt1);
         let gt1 = self.context(120 + size.group() * 4 + nonzero_count.min(3))?;
         let magnitude = if !gt1 {
             1
-        } else if !self.context(136 + size.group() * 2 + nonzero_count.min(1))? {
-            2
         } else {
-            self.read_unsigned_bypass()?
-                .checked_add(3)
-                .ok_or_else(|| invalid("coefficient.level_cap"))?
+            self.record_element(SyntaxElement::Gt2);
+            if self.context(136 + size.group() * 2 + nonzero_count.min(1))? {
+                self.read_unsigned_bypass()?
+                    .checked_add(3)
+                    .ok_or_else(|| invalid("coefficient.level_cap"))?
+            } else {
+                2
+            }
         };
         if magnitude > MAX_LEVEL {
             return Err(invalid("coefficient.level_cap"));
         }
         let magnitude = i32::try_from(magnitude).map_err(|_| invalid("coefficient.level"))?;
+        self.record_element(SyntaxElement::NonzeroSign);
         Ok(if self.bypass()? {
             -magnitude
         } else {
@@ -193,6 +216,7 @@ impl SyntaxReader<'_> {
     }
 
     fn read_unsigned_bypass(&mut self) -> Result<u32, BitstreamError> {
+        self.record_element(SyntaxElement::RiceRemainder);
         let mut prefix = 0_u32;
         while !self.bypass()? {
             prefix += 1;

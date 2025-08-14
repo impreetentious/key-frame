@@ -2,7 +2,10 @@ use kf_range::{
     ContextBank, CoverageCounter, EncodedRange, RangeDecoder, RangeEncoder, RangeError, RangeStats,
 };
 
-use crate::BitstreamError;
+use crate::{
+    BitstreamError,
+    syntax::coverage::{ElementCoverage, SyntaxElement},
+};
 
 /// Range writer plus a caller-owned transactional context snapshot.
 #[derive(Clone, Debug)]
@@ -10,6 +13,7 @@ pub struct SyntaxWriter {
     range: RangeEncoder,
     contexts: ContextBank,
     coverage: CoverageCounter,
+    elements: ElementCoverage,
 }
 
 impl SyntaxWriter {
@@ -19,6 +23,7 @@ impl SyntaxWriter {
             range: RangeEncoder::new(),
             contexts,
             coverage: CoverageCounter::new(),
+            elements: ElementCoverage::new(),
         }
     }
 
@@ -59,6 +64,16 @@ impl SyntaxWriter {
         &self.coverage
     }
 
+    /// Named syntax elements emitted on this writer.
+    #[must_use]
+    pub const fn elements(&self) -> &ElementCoverage {
+        &self.elements
+    }
+
+    pub(crate) const fn record_element(&mut self, element: SyntaxElement) {
+        self.elements.record(element);
+    }
+
     #[must_use]
     pub fn finish(self) -> (EncodedRange, ContextBank) {
         (self.range.finish(), self.contexts)
@@ -71,6 +86,7 @@ pub struct SyntaxReader<'a> {
     range: RangeDecoder<'a>,
     contexts: ContextBank,
     coverage: CoverageCounter,
+    elements: ElementCoverage,
 }
 
 impl<'a> SyntaxReader<'a> {
@@ -79,6 +95,7 @@ impl<'a> SyntaxReader<'a> {
             range: RangeDecoder::new(payload).map_err(range_error)?,
             contexts,
             coverage: CoverageCounter::new(),
+            elements: ElementCoverage::new(),
         })
     }
 
@@ -106,6 +123,16 @@ impl<'a> SyntaxReader<'a> {
     #[must_use]
     pub const fn coverage(&self) -> &CoverageCounter {
         &self.coverage
+    }
+
+    /// Named syntax elements consumed from this payload.
+    #[must_use]
+    pub const fn elements(&self) -> &ElementCoverage {
+        &self.elements
+    }
+
+    pub(crate) const fn record_element(&mut self, element: SyntaxElement) {
+        self.elements.record(element);
     }
 
     #[must_use]

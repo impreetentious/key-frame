@@ -1,4 +1,4 @@
-use crate::{BitstreamError, BlockSize, PartitionTree, SyntaxReader, SyntaxWriter};
+use crate::{BitstreamError, BlockSize, PartitionTree, SyntaxElement, SyntaxReader, SyntaxWriter};
 
 impl SyntaxWriter {
     /// Writes one validated top-down superblock partition tree.
@@ -44,6 +44,7 @@ impl SyntaxWriter {
                 Ok(())
             };
         }
+        self.record_element(SyntaxElement::PartitionTree);
         self.context(u16::from(size.depth()) * 3, split)
     }
 }
@@ -59,6 +60,7 @@ impl SyntaxReader<'_> {
             return Ok(PartitionTree::Leaf(size));
         }
         let context_id = u16::from(size.depth()) * 3;
+        self.record_element(SyntaxElement::PartitionTree);
         if !self.context(context_id)? {
             return Ok(PartitionTree::Leaf(size));
         }
