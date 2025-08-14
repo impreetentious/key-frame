@@ -2,6 +2,7 @@ use kf_frame::{Frame, Plane};
 
 use crate::{
     ReferenceError,
+    coverage::ReferenceCoverage,
     crc::crc32c,
     deblock::{RefCodedBlock, loop_filter_frame},
     motion::{RefMotionField, RefMotionVector, RefReference, clamp_motion, predict_inter},
@@ -13,6 +14,13 @@ use crate::{
     syntax::{RefBlock, RefPrediction, read_coefficients, read_partition, read_prediction},
     transform::inverse_levels,
 };
+
+/// A decode plus everything it was instrumented for.
+struct RefInstrumented {
+    frames: Vec<Frame>,
+    checkpoints: Vec<[u16; 144]>,
+    coverage: ReferenceCoverage,
+}
 
 #[derive(Clone, Copy)]
 struct RefFrames<'a> {
@@ -59,6 +67,23 @@ impl ReferenceDecoder {
         &mut self,
         bytes: &[u8],
     ) -> Result<(Vec<Frame>, Vec<[u16; 144]>), ReferenceError> {
+        let decoded = self.decode_stream_instrumented(bytes)?;
+        Ok((decoded.frames, decoded.checkpoints))
+    }
+
+    /// Decodes a stream and independently tallies what it coded.
+    pub fn decode_stream_coverage(
+        &mut self,
+        bytes: &[u8],
+    ) -> Result<(Vec<Frame>, ReferenceCoverage), ReferenceError> {
+        let decoded = self.decode_stream_instrumented(bytes)?;
+        Ok((decoded.frames, decoded.coverage))
+    }
+
+    fn decode_stream_instrumented(
+        &mut self,
+        bytes: &[u8],
+    ) -> Result<RefInstrumented, ReferenceError> {
         self.invalidate();
         let result = self.decode_all(bytes);
         if result.is_err() {
@@ -86,13 +111,11 @@ impl ReferenceDecoder {
         self.contexts
     }
 
-    fn decode_all(
-        &mut self,
-        bytes: &[u8],
-    ) -> Result<(Vec<Frame>, Vec<[u16; 144]>), ReferenceError> {
+    fn decode_all(&mut self, bytes: &[u8]) -> Result<RefInstrumented, ReferenceError> {
         let (width, height, packet_start) = read_sequence(bytes)?;
         let mut frames = Vec::new();
         let mut checkpoints = Vec::new();
+        let mut coverage = ReferenceCoverage::new();
         let mut cursor = PacketCursor::new(&bytes[packet_start..]);
         while let Some(packet) = cursor.next_packet()? {
             let expected_index = self
@@ -109,12 +132,17 @@ impl ReferenceDecoder {
             }
             let decoded = self.decode_packet(width, height, &packet)?;
             checkpoints.extend(decoded.checkpoints);
+            coverage.merge(&decoded.coverage);
             frames.push(self.install(&packet, decoded.padded, decoded.contexts, width, height)?);
         }
         if frames.is_empty() {
             return Err(ReferenceError::new(0, "initial_keyframe"));
         }
-        Ok((frames, checkpoints))
+        Ok(RefInstrumented {
+            frames,
+            checkpoints,
+            coverage,
+        })
     }
 
     /// Decodes one validated packet without touching committed state, so a
@@ -164,10 +192,12 @@ impl ReferenceDecoder {
             }
         }
         loop_filter_frame(&mut frame, packet.qp, &coded_blocks)?;
+        let coverage = range.coverage().clone();
         Ok(DecodedPacket {
             contexts: range.contexts(),
             padded: frame,
             checkpoints,
+            coverage,
         })
     }
 
@@ -282,6 +312,7 @@ struct DecodedPacket {
     padded: Frame,
     contexts: [u16; 144],
     checkpoints: Vec<[u16; 144]>,
+    coverage: ReferenceCoverage,
 }
 
 fn reconstruct_block(

@@ -1,13 +1,13 @@
 use kf_bitstream::{
-    BlockSize, FrameType, IntraMode, PartitionTree, PlaneClass, Prediction, SequenceHeader,
-    SyntaxReader, TransformBlockSize,
+    BlockSize, ElementCoverage, FrameType, IntraMode, PartitionTree, PlaneClass, Prediction,
+    SequenceHeader, SyntaxReader, TransformBlockSize,
 };
 use kf_frame::{Frame, Plane};
 use kf_predict::{
     BlockMotion, CodedBlock, IntraMode as PredictMode, MotionField, MotionVector, PlaneScale,
     ReferenceSlot, clamp_motion_vector, deblock_frame, predict_inter, predict_intra,
 };
-use kf_range::ContextBank;
+use kf_range::{ContextBank, CoverageCounter};
 use kf_transform::{TransformSize, dequantize_block, inverse_transform};
 
 use crate::DecodeError;
@@ -27,6 +27,17 @@ impl<'a> ReferenceFrames<'a> {
     }
 }
 
+/// Everything one payload yields: the padded reconstruction, the context bank
+/// to carry forward, the per-superblock lockstep checkpoints, and what the
+/// payload actually coded.
+pub(crate) struct PayloadDecode {
+    pub(crate) frame: Frame,
+    pub(crate) contexts: ContextBank,
+    pub(crate) checkpoints: Vec<[u16; 144]>,
+    pub(crate) coverage: CoverageCounter,
+    pub(crate) elements: ElementCoverage,
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn decode_payload(
     sequence: &SequenceHeader,
@@ -36,7 +47,7 @@ pub(crate) fn decode_payload(
     contexts: ContextBank,
     frame_type: FrameType,
     references: Option<ReferenceFrames<'_>>,
-) -> Result<(Frame, ContextBank, Vec<[u16; 144]>), DecodeError> {
+) -> Result<PayloadDecode, DecodeError> {
     if frame_type == FrameType::P && references.is_none() {
         return Err(invalid(frame_index, "reference.missing"));
     }
@@ -73,8 +84,15 @@ pub(crate) fn decode_payload(
     }
     deblock_frame(&mut frame, qp, &coded_blocks)
         .map_err(|_| invalid(frame_index, "reconstruction.deblock"))?;
-    let final_contexts = reader.into_contexts();
-    Ok((frame, final_contexts, checkpoints))
+    let coverage = reader.coverage().clone();
+    let elements = *reader.elements();
+    Ok(PayloadDecode {
+        frame,
+        contexts: reader.into_contexts(),
+        checkpoints,
+        coverage,
+        elements,
+    })
 }
 
 #[allow(clippy::too_many_arguments)]

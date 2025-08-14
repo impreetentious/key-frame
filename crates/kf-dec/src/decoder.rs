@@ -1,12 +1,33 @@
-use kf_bitstream::{FrameType, PacketScanner, SEQUENCE_HEADER_SIZE, ScanEvent, SequenceHeader};
+use kf_bitstream::{
+    ElementCoverage, FrameType, PacketScanner, SEQUENCE_HEADER_SIZE, ScanEvent, SequenceHeader,
+};
 use kf_frame::Frame;
-use kf_range::ContextBank;
+use kf_range::{ContextBank, CoverageCounter};
 
 use crate::{
     DecodeError,
     reconstruct::{ReferenceFrames, decode_payload},
     status::{FrameStatus, Recovery, StreamReport},
 };
+
+/// A decode plus everything it was instrumented for.
+struct Instrumented {
+    frames: Vec<Frame>,
+    checkpoints: Vec<[u16; 144]>,
+    coverage: StreamCoverage,
+}
+
+/// What a whole stream coded, measured while decoding it.
+///
+/// This is the only honest way to state conformance coverage: an inventory
+/// file can claim a vector exercises an element, but only a decode proves it.
+#[derive(Clone, Debug)]
+pub struct StreamCoverage {
+    /// Frozen context ids touched anywhere in the stream.
+    pub contexts: CoverageCounter,
+    /// Named syntax elements coded anywhere in the stream.
+    pub elements: ElementCoverage,
+}
 
 /// Transactional scalar decode state.
 #[derive(Clone, Debug, Default)]
@@ -33,11 +54,25 @@ impl FastDecoder {
         Ok(self.decode_stream_traced(bytes)?.0)
     }
 
+    /// Decodes a stream and reports which contexts and elements it coded.
+    pub fn decode_stream_coverage(
+        &mut self,
+        bytes: &[u8],
+    ) -> Result<(Vec<Frame>, StreamCoverage), DecodeError> {
+        let decoded = self.decode_stream_instrumented(bytes)?;
+        Ok((decoded.frames, decoded.coverage))
+    }
+
     /// Decodes a stream and records the context bank after every superblock.
     pub fn decode_stream_traced(
         &mut self,
         bytes: &[u8],
     ) -> Result<(Vec<Frame>, Vec<[u16; 144]>), DecodeError> {
+        let decoded = self.decode_stream_instrumented(bytes)?;
+        Ok((decoded.frames, decoded.checkpoints))
+    }
+
+    fn decode_stream_instrumented(&mut self, bytes: &[u8]) -> Result<Instrumented, DecodeError> {
         self.invalidate();
         let sequence = SequenceHeader::decode(bytes)?;
         let packet_bytes = bytes
@@ -49,6 +84,10 @@ impl FastDecoder {
         let mut scanner = PacketScanner::new(packet_bytes);
         let mut frames = Vec::new();
         let mut checkpoints = Vec::new();
+        let mut coverage = StreamCoverage {
+            contexts: CoverageCounter::new(),
+            elements: ElementCoverage::new(),
+        };
         loop {
             let packet = match scanner.next_packet() {
                 Ok(Some(packet)) => packet,
@@ -92,7 +131,7 @@ impl FastDecoder {
                     element: "pframe.references",
                 });
             }
-            let (padded_frame, final_contexts, frame_checkpoints) = match decode_payload(
+            let decoded = match decode_payload(
                 &sequence,
                 &packet.payload,
                 packet.frame_index,
@@ -107,6 +146,9 @@ impl FastDecoder {
                     return Err(error);
                 }
             };
+            coverage.contexts.merge(&decoded.coverage);
+            coverage.elements.merge(&decoded.elements);
+            let padded_frame = decoded.frame;
             let visible_frame = padded_frame
                 .crop_420(u32::from(sequence.width), u32::from(sequence.height))
                 .map_err(|_| DecodeError::InvalidFrame {
@@ -117,9 +159,9 @@ impl FastDecoder {
             if packet.flags.key || packet.flags.golden_refresh {
                 self.golden = Some(padded_frame);
             }
-            self.contexts = Some(final_contexts);
+            self.contexts = Some(decoded.contexts);
             self.last_frame_index = Some(packet.frame_index);
-            checkpoints.extend(frame_checkpoints);
+            checkpoints.extend(decoded.checkpoints);
             frames.push(visible_frame);
         }
         if frames.is_empty() {
@@ -128,7 +170,11 @@ impl FastDecoder {
                 element: "initial_keyframe",
             });
         }
-        Ok((frames, checkpoints))
+        Ok(Instrumented {
+            frames,
+            checkpoints,
+            coverage,
+        })
     }
 
     /// Compatibility entry point for single-frame intra callers.
@@ -234,12 +280,13 @@ impl FastDecoder {
                 frame_type,
                 references,
             );
-            let Ok((padded_frame, final_contexts, _)) = decoded else {
+            let Ok(decoded) = decoded else {
                 self.invalidate();
                 needs_keyframe = true;
                 report.statuses.push(FrameStatus::Corrupt);
                 continue;
             };
+            let padded_frame = decoded.frame;
             let Ok(visible_frame) =
                 padded_frame.crop_420(u32::from(sequence.width), u32::from(sequence.height))
             else {
@@ -253,7 +300,7 @@ impl FastDecoder {
             if header_key || packet.flags.golden_refresh {
                 self.golden = Some(padded_frame);
             }
-            self.contexts = Some(final_contexts);
+            self.contexts = Some(decoded.contexts);
             self.last_frame_index = Some(packet.frame_index);
             needs_keyframe = false;
             report.frames.push(visible_frame);

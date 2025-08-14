@@ -1,6 +1,9 @@
 use kf_spec::V1_ASSETS;
 
-use crate::ReferenceError;
+use crate::{
+    ReferenceError,
+    coverage::{ReferenceCoverage, ReferenceElement},
+};
 
 const TOP: u32 = 1 << 24;
 
@@ -10,6 +13,7 @@ pub(crate) struct ReferenceRange<'a> {
     range: u32,
     code: u32,
     contexts: [u16; 144],
+    coverage: ReferenceCoverage,
 }
 
 impl<'a> ReferenceRange<'a> {
@@ -27,6 +31,7 @@ impl<'a> ReferenceRange<'a> {
             range: 0xFFFF_FFFF,
             code: 0,
             contexts,
+            coverage: ReferenceCoverage::new(),
         };
         for _ in 0..5 {
             decoder.code = decoder.code.wrapping_shl(8) | u32::from(decoder.read_byte()?);
@@ -35,6 +40,7 @@ impl<'a> ReferenceRange<'a> {
     }
 
     pub(crate) fn context(&mut self, id: u16) -> Result<bool, ReferenceError> {
+        self.coverage.record_context(id);
         let index = usize::from(id);
         let p1 = *self
             .contexts
@@ -50,6 +56,14 @@ impl<'a> ReferenceRange<'a> {
 
     pub(crate) fn bypass(&mut self) -> Result<bool, ReferenceError> {
         self.bin(2048)
+    }
+
+    pub(crate) const fn element(&mut self, element: ReferenceElement) {
+        self.coverage.record_element(element);
+    }
+
+    pub(crate) const fn coverage(&self) -> &ReferenceCoverage {
+        &self.coverage
     }
 
     pub(crate) fn contexts(self) -> [u16; 144] {

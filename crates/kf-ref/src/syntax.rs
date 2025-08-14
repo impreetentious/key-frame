@@ -2,6 +2,7 @@ use kf_spec::V1_ASSETS;
 
 use crate::{
     ReferenceError,
+    coverage::ReferenceElement,
     motion::{RefMotionVector, RefReference},
     range::ReferenceRange,
 };
@@ -53,7 +54,12 @@ fn read_node(
     depth: u16,
     blocks: &mut Vec<RefBlock>,
 ) -> Result<(), ReferenceError> {
-    if size == 8 || !range.context(depth * 3)? {
+    if size == 8 {
+        blocks.push(RefBlock { x, y, size });
+        return Ok(());
+    }
+    range.element(ReferenceElement::PartitionSplit);
+    if !range.context(depth * 3)? {
         blocks.push(RefBlock { x, y, size });
         return Ok(());
     }
@@ -67,6 +73,7 @@ fn read_node(
 pub(crate) fn read_intra_mode(
     range: &mut ReferenceRange<'_>,
 ) -> Result<RefIntraMode, ReferenceError> {
+    range.element(ReferenceElement::IntraModeTree);
     let mut index = 0_u8;
     for context in [18, 21, 22] {
         index = (index << 1) | u8::from(range.context(context)?);
@@ -91,14 +98,18 @@ pub(crate) fn read_prediction(
     if key {
         return Ok(RefPrediction::Intra(read_intra_mode(range)?));
     }
+    range.element(ReferenceElement::SkipFlag);
     if range.context(12)? {
         return Ok(RefPrediction::Skip(read_reference(range)?));
     }
+    range.element(ReferenceElement::InterFlag);
     if !range.context(15)? {
         return Ok(RefPrediction::Intra(read_intra_mode(range)?));
     }
+    let reference = read_reference(range)?;
+    range.element(ReferenceElement::MotionDifference);
     Ok(RefPrediction::Inter {
-        reference: read_reference(range)?,
+        reference,
         mvd: RefMotionVector {
             x_q4: i32::from(read_mvd_component(range, 30)?),
             y_q4: i32::from(read_mvd_component(range, 33)?),
@@ -107,6 +118,7 @@ pub(crate) fn read_prediction(
 }
 
 fn read_reference(range: &mut ReferenceRange<'_>) -> Result<RefReference, ReferenceError> {
+    range.element(ReferenceElement::ReferenceSelect);
     Ok(if range.context(28)? {
         RefReference::Golden
     } else {
@@ -162,6 +174,7 @@ pub(crate) fn read_coefficients(
     let side = usize::try_from(size).map_err(|_| ReferenceError::new(0, "transform.size"))?;
     let mut levels = vec![0_i32; side * side];
     let presence_context = 36 + if chroma { 4 } else { 0 } + group;
+    range.element(ReferenceElement::CoefficientPresence);
     if !range.context(presence_context)? {
         return Ok(levels);
     }
@@ -181,6 +194,7 @@ pub(crate) fn read_coefficients(
         let significant = if position == last_scan {
             true
         } else {
+            range.element(ReferenceElement::Significance);
             range.context(76 + group * 11 + nonzero_count.min(10))?
         };
         if significant {
@@ -200,6 +214,11 @@ fn read_position(
     size: u32,
     group: u16,
 ) -> Result<usize, ReferenceError> {
+    range.element(if vertical {
+        ReferenceElement::LastRow
+    } else {
+        ReferenceElement::LastColumn
+    });
     let bits = size.ilog2();
     let base = (if vertical { 60 } else { 44 }) + group * 4;
     let mut value = 0_usize;
@@ -219,21 +238,26 @@ fn read_level(
     group: u16,
     nonzero_count: u16,
 ) -> Result<i32, ReferenceError> {
+    range.element(ReferenceElement::GreaterThanOne);
     let gt1 = range.context(120 + group * 4 + nonzero_count.min(3))?;
     let magnitude = if !gt1 {
         1
-    } else if !range.context(136 + group * 2 + nonzero_count.min(1))? {
-        2
     } else {
-        read_unsigned(range)?
-            .checked_add(3)
-            .ok_or_else(|| ReferenceError::new(0, "coefficient.level"))?
+        range.element(ReferenceElement::GreaterThanTwo);
+        if range.context(136 + group * 2 + nonzero_count.min(1))? {
+            read_unsigned(range)?
+                .checked_add(3)
+                .ok_or_else(|| ReferenceError::new(0, "coefficient.level"))?
+        } else {
+            2
+        }
     };
     if magnitude > 32_767 {
         return Err(ReferenceError::new(0, "coefficient.level_cap"));
     }
     let magnitude =
         i32::try_from(magnitude).map_err(|_| ReferenceError::new(0, "coefficient.level"))?;
+    range.element(ReferenceElement::LevelSign);
     Ok(if range.bypass()? {
         -magnitude
     } else {
@@ -242,6 +266,7 @@ fn read_level(
 }
 
 fn read_unsigned(range: &mut ReferenceRange<'_>) -> Result<u32, ReferenceError> {
+    range.element(ReferenceElement::MagnitudeRemainder);
     let mut prefix = 0_u32;
     while !range.bypass()? {
         prefix += 1;
