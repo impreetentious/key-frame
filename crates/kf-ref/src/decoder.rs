@@ -8,7 +8,8 @@ use crate::{
     predict::predict,
     range::ReferenceRange,
     reader::ByteReader,
-    scan::PacketCursor,
+    scan::{PacketCursor, RefPacket, RefScanEvent},
+    status::{RefFrameStatus, RefRecovery, RefStreamReport},
     syntax::{RefBlock, RefPrediction, read_coefficients, read_partition, read_prediction},
     transform::inverse_levels,
 };
@@ -103,64 +104,169 @@ impl ReferenceDecoder {
                     "packet.frame_index_gap",
                 ));
             }
-            let references = match (&self.last, &self.golden) {
-                (Some(last), Some(golden)) => Some(RefFrames { last, golden }),
-                _ => None,
-            };
-            if !packet.key && references.is_none() {
+            if !packet.key && !self.has_references() {
                 return Err(ReferenceError::new(packet.frame_index, "pframe.references"));
             }
-            let mut range = if packet.key {
-                ReferenceRange::new(packet.payload)?
-            } else {
-                ReferenceRange::with_contexts(
-                    packet.payload,
-                    self.contexts
-                        .ok_or_else(|| ReferenceError::new(0, "pframe.contexts"))?,
-                )?
-            };
-            let padded_width = u32::from(width).div_ceil(64) * 64;
-            let padded_height = u32::from(height).div_ceil(64) * 64;
-            let mut frame = Frame::filled_420(padded_width, padded_height, 0)
-                .map_err(|_| ReferenceError::new(0, "frame.allocate"))?;
-            let mut motion_field = RefMotionField::new(padded_width, padded_height)?;
-            let mut coded_blocks = Vec::new();
-            for superblock_y in (0..padded_height).step_by(64) {
-                for superblock_x in (0..padded_width).step_by(64) {
-                    let blocks = read_partition(&mut range, superblock_x, superblock_y)?;
-                    for block in blocks {
-                        let prediction = read_prediction(&mut range, packet.key)?;
-                        coded_blocks.push(reconstruct_block(
-                            &mut range,
-                            &mut frame,
-                            &mut motion_field,
-                            references,
-                            block,
-                            prediction,
-                            packet.qp,
-                        )?);
-                    }
-                    checkpoints.push(range.p1_values());
-                }
-            }
-            loop_filter_frame(&mut frame, packet.qp, &coded_blocks)?;
-            let final_contexts = range.contexts();
-            let visible = frame
-                .crop_420(u32::from(width), u32::from(height))
-                .map_err(|_| ReferenceError::new(0, "frame.crop"))?;
-
-            self.last = Some(frame.clone());
-            if packet.key || packet.golden_refresh {
-                self.golden = Some(frame);
-            }
-            self.contexts = Some(final_contexts);
-            self.last_frame_index = Some(packet.frame_index);
-            frames.push(visible);
+            let decoded = self.decode_packet(width, height, &packet)?;
+            checkpoints.extend(decoded.checkpoints);
+            frames.push(self.install(&packet, decoded.padded, decoded.contexts, width, height)?);
         }
         if frames.is_empty() {
             return Err(ReferenceError::new(0, "initial_keyframe"));
         }
         Ok((frames, checkpoints))
+    }
+
+    /// Decodes one validated packet without touching committed state, so a
+    /// failure leaves the decoder exactly as it was.
+    fn decode_packet(
+        &self,
+        width: u16,
+        height: u16,
+        packet: &RefPacket<'_>,
+    ) -> Result<DecodedPacket, ReferenceError> {
+        let references = match (&self.last, &self.golden) {
+            (Some(last), Some(golden)) => Some(RefFrames { last, golden }),
+            _ => None,
+        };
+        let mut range = if packet.key {
+            ReferenceRange::new(packet.payload)?
+        } else {
+            ReferenceRange::with_contexts(
+                packet.payload,
+                self.contexts
+                    .ok_or_else(|| ReferenceError::new(0, "pframe.contexts"))?,
+            )?
+        };
+        let padded_width = u32::from(width).div_ceil(64) * 64;
+        let padded_height = u32::from(height).div_ceil(64) * 64;
+        let mut frame = Frame::filled_420(padded_width, padded_height, 0)
+            .map_err(|_| ReferenceError::new(0, "frame.allocate"))?;
+        let mut motion_field = RefMotionField::new(padded_width, padded_height)?;
+        let mut coded_blocks = Vec::new();
+        let mut checkpoints = Vec::new();
+        for superblock_y in (0..padded_height).step_by(64) {
+            for superblock_x in (0..padded_width).step_by(64) {
+                let blocks = read_partition(&mut range, superblock_x, superblock_y)?;
+                for block in blocks {
+                    let prediction = read_prediction(&mut range, packet.key)?;
+                    coded_blocks.push(reconstruct_block(
+                        &mut range,
+                        &mut frame,
+                        &mut motion_field,
+                        references,
+                        block,
+                        prediction,
+                        packet.qp,
+                    )?);
+                }
+                checkpoints.push(range.p1_values());
+            }
+        }
+        loop_filter_frame(&mut frame, packet.qp, &coded_blocks)?;
+        Ok(DecodedPacket {
+            contexts: range.contexts(),
+            padded: frame,
+            checkpoints,
+        })
+    }
+
+    /// Commits a fully decoded packet and returns its visible image.
+    fn install(
+        &mut self,
+        packet: &RefPacket<'_>,
+        padded: Frame,
+        contexts: [u16; 144],
+        width: u16,
+        height: u16,
+    ) -> Result<Frame, ReferenceError> {
+        let visible = padded
+            .crop_420(u32::from(width), u32::from(height))
+            .map_err(|_| ReferenceError::new(0, "frame.crop"))?;
+        self.last = Some(padded.clone());
+        if packet.key || packet.golden_refresh {
+            self.golden = Some(padded);
+        }
+        self.contexts = Some(contexts);
+        self.last_frame_index = Some(packet.frame_index);
+        Ok(visible)
+    }
+
+    /// Independently decodes a stream that may be damaged, classifying every
+    /// structurally accepted packet rather than stopping at the first fault.
+    ///
+    /// Written against the normative rules directly, not against the fast
+    /// decoder: an index gap invalidates before the packet is classified, a
+    /// keyframe may always be attempted because it needs neither old references
+    /// nor carried contexts, and nothing is committed until a packet decodes
+    /// completely.
+    pub fn decode_stream_resilient(
+        &mut self,
+        bytes: &[u8],
+    ) -> Result<RefStreamReport, ReferenceError> {
+        self.invalidate();
+        let (width, height, packet_start) = read_sequence(bytes)?;
+        let mut cursor = PacketCursor::new(&bytes[packet_start..]);
+        let mut report = RefStreamReport::default();
+        let mut needs_keyframe = true;
+        let mut next_expected_index = 0u32;
+        loop {
+            let event = cursor.next_event();
+            let (index, key, packet) = match &event {
+                RefScanEvent::Packet(packet) => (packet.frame_index, packet.key, Some(packet)),
+                RefScanEvent::PayloadCorrupt(facts) | RefScanEvent::Truncated(facts) => {
+                    (facts.frame_index, facts.key, None)
+                }
+                RefScanEvent::End => break,
+            };
+
+            let gap = index != next_expected_index;
+            let recovery = if gap {
+                self.invalidate();
+                needs_keyframe = true;
+                Some(if next_expected_index == 0 {
+                    RefRecovery::LeadingLoss
+                } else {
+                    RefRecovery::Gap
+                })
+            } else {
+                None
+            };
+            next_expected_index = index.saturating_add(1);
+
+            let Some(packet) = packet else {
+                self.invalidate();
+                needs_keyframe = true;
+                report.statuses.push(RefFrameStatus::Corrupt);
+                continue;
+            };
+            if !key && (needs_keyframe || !self.has_references()) {
+                self.invalidate();
+                needs_keyframe = true;
+                report.statuses.push(RefFrameStatus::DependencyLost);
+                continue;
+            }
+            let Ok(decoded) = self.decode_packet(width, height, packet) else {
+                self.invalidate();
+                needs_keyframe = true;
+                report.statuses.push(RefFrameStatus::Corrupt);
+                continue;
+            };
+            let Ok(visible) = self.install(packet, decoded.padded, decoded.contexts, width, height)
+            else {
+                self.invalidate();
+                needs_keyframe = true;
+                report.statuses.push(RefFrameStatus::Corrupt);
+                continue;
+            };
+            needs_keyframe = false;
+            report.frames.push(visible);
+            report.statuses.push(match recovery {
+                Some(recovery) if key => RefFrameStatus::RecoveredKeyframe(recovery),
+                _ => RefFrameStatus::Shown,
+            });
+        }
+        Ok(report)
     }
 
     fn invalidate(&mut self) {
@@ -169,6 +275,13 @@ impl ReferenceDecoder {
         self.contexts = None;
         self.last_frame_index = None;
     }
+}
+
+/// One packet decoded but not yet committed.
+struct DecodedPacket {
+    padded: Frame,
+    contexts: [u16; 144],
+    checkpoints: Vec<[u16; 144]>,
 }
 
 fn reconstruct_block(

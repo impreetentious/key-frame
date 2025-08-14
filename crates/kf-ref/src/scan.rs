@@ -12,6 +12,23 @@ pub(crate) struct RefPacket<'a> {
     pub consumed: usize,
 }
 
+/// Header facts a recovering decoder still needs when the payload is unusable.
+#[derive(Clone, Copy)]
+pub(crate) struct RefHeaderFacts {
+    pub frame_index: u32,
+    pub key: bool,
+}
+
+/// One outcome of advancing the independent cursor.
+pub(crate) enum RefScanEvent<'a> {
+    Packet(RefPacket<'a>),
+    /// Header validated, payload CRC failed; the declared extent was consumed.
+    PayloadCorrupt(RefHeaderFacts),
+    /// Header validated, payload runs past the end of the region.
+    Truncated(RefHeaderFacts),
+    End,
+}
+
 /// Independent packet cursor. Failed sync or header candidates advance one byte.
 pub(crate) struct PacketCursor<'a> {
     bytes: &'a [u8],
@@ -78,9 +95,64 @@ impl<'a> PacketCursor<'a> {
     }
 }
 
+impl<'a> PacketCursor<'a> {
+    /// Advances to the next outcome, distinguishing damage that can be stepped
+    /// over from damage that ends the region. Byte advancement is identical to
+    /// `next_packet`, so the two agree on where every packet sits.
+    pub(crate) fn next_event(&mut self) -> RefScanEvent<'a> {
+        while self.offset + 4 <= self.bytes.len() {
+            if &self.bytes[self.offset..self.offset + 4] != b"KFP1" {
+                self.offset += 1;
+                continue;
+            }
+            let remaining = &self.bytes[self.offset..];
+            let Ok(header) = read_header(remaining) else {
+                self.offset += 1;
+                continue;
+            };
+            if self
+                .last_seen_index
+                .is_some_and(|previous| header.frame_index <= previous)
+            {
+                self.offset += 1;
+                continue;
+            }
+            let Ok(payload_len) = usize::try_from(header.payload_len) else {
+                self.offset += 1;
+                continue;
+            };
+            let extent = FRAME_HEADER_SIZE + payload_len;
+            self.last_seen_index = Some(header.frame_index);
+            let facts = RefHeaderFacts {
+                frame_index: header.frame_index,
+                key: header.key,
+            };
+            if remaining.len() < extent {
+                self.offset = self.bytes.len();
+                return RefScanEvent::Truncated(facts);
+            }
+            match read_packet(remaining) {
+                Ok(packet) => {
+                    self.offset += packet.consumed;
+                    return RefScanEvent::Packet(packet);
+                }
+                Err(error) if error.element == "packet.payload_crc" => {
+                    self.offset += extent;
+                    return RefScanEvent::PayloadCorrupt(facts);
+                }
+                Err(_) => {
+                    self.offset += 1;
+                }
+            }
+        }
+        RefScanEvent::End
+    }
+}
+
 struct PacketHeader {
     payload_len: u32,
     frame_index: u32,
+    key: bool,
 }
 
 fn read_header(bytes: &[u8]) -> Result<PacketHeader, ReferenceError> {
@@ -114,6 +186,7 @@ fn read_header(bytes: &[u8]) -> Result<PacketHeader, ReferenceError> {
     Ok(PacketHeader {
         payload_len,
         frame_index: u32::from_le_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]),
+        key,
     })
 }
 

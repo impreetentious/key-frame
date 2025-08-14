@@ -59,10 +59,12 @@ corpus with the encoder build that produced it. The encoder is scalar and
 single-threaded, and it optimizes for a decision you can follow rather than for
 speed; its average-bitrate mode is a single-pass leaky bucket that holds a
 target across a clip, not a per-frame guarantee. Damage handling is limited to
-detection and dependency invalidation: a corrupt frame is never concealed,
-never partially applied, and never allowed into later prediction, but nothing is
-reconstructed from it either. Linux x86_64 and macOS arm64 are the supported
-native targets; Windows is not supported.
+detection, dependency invalidation, and resumption at the next valid keyframe: a
+corrupt frame is never concealed, never partially applied, and never allowed into
+later prediction, but nothing is reconstructed from it either, and the frames
+between the damage and the next keyframe are reported as lost rather than
+estimated. Linux x86_64 and macOS arm64 are the supported native targets;
+Windows is not supported.
 
 ## Stack
 
@@ -107,9 +109,10 @@ One command runs every gate, in the order continuous integration runs them:
 
 It checks version, documentation, license, and specification coherence, then the
 range-coder, transform, bitstream, syntax, reference-decoder, probe, intra,
-conformance, inter, entropy, deblock, natural-corpus, rate-control, and
-decoder-campaign gates, then formatting, lints, the forbidden-API and
-decoder-boundary scan, the full test suite, and the documentation build.
+conformance, inter, entropy, deblock, natural-corpus, rate-control,
+decoder-campaign, and error-matrix gates, then formatting, lints, the
+forbidden-API and decoder-boundary scan, the full test suite, and the
+documentation build.
 
 ## Build and deploy
 
@@ -133,4 +136,4 @@ preflight green.
 
 ---
 
-**Version:** v0.11.2
+**Version:** v0.11.3
