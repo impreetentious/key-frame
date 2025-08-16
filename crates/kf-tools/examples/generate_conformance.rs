@@ -2,14 +2,14 @@ use std::{env, fs, path::PathBuf, process::ExitCode};
 
 use kf_bitstream::{
     BITSTREAM_VERSION, BlockSize, FrameFlags, FramePacket, FrameType, IntraMode, PartitionTree,
-    PlaneClass, Prediction, SequenceHeader, SyntaxWriter, TransformBlockSize,
+    Prediction, SequenceHeader, SyntaxWriter,
 };
 use kf_dec::FastDecoder;
 use kf_enc::{Encoder, IntraEncoder};
 use kf_frame::Frame;
 use kf_range::ContextBank;
 use kf_ref::ReferenceDecoder;
-use kf_tools::sha256_hex;
+use kf_tools::{hand_vectors, sha256_hex, transform_schedule};
 
 struct EncoderVector {
     name: &'static str,
@@ -122,6 +122,18 @@ fn generate(check: bool) -> Result<(), String> {
         frame_count: 1,
         bytes: &hand,
     })?;
+
+    for vector in hand_vectors()? {
+        sink.push_decoded(StreamSpec {
+            origin: "hand",
+            name: vector.name,
+            width: vector.width,
+            height: vector.height,
+            qp: vector.qp,
+            frame_count: vector.frame_count,
+            bytes: &vector.bytes,
+        })?;
+    }
 
     for vector in encoder_vectors()? {
         let sequence = SequenceHeader::new(vector.width, vector.height, 24, 1, 120, 16)
@@ -272,31 +284,6 @@ fn write_zero_residual(writer: &mut SyntaxWriter, size: BlockSize) -> Result<(),
         }
     }
     Ok(())
-}
-
-fn transform_schedule(size: BlockSize) -> [(PlaneClass, TransformBlockSize, usize); 3] {
-    match size {
-        BlockSize::N64 => [
-            (PlaneClass::Luma, TransformBlockSize::N32, 4),
-            (PlaneClass::Chroma, TransformBlockSize::N32, 1),
-            (PlaneClass::Chroma, TransformBlockSize::N32, 1),
-        ],
-        BlockSize::N32 => [
-            (PlaneClass::Luma, TransformBlockSize::N32, 1),
-            (PlaneClass::Chroma, TransformBlockSize::N16, 1),
-            (PlaneClass::Chroma, TransformBlockSize::N16, 1),
-        ],
-        BlockSize::N16 => [
-            (PlaneClass::Luma, TransformBlockSize::N16, 1),
-            (PlaneClass::Chroma, TransformBlockSize::N8, 1),
-            (PlaneClass::Chroma, TransformBlockSize::N8, 1),
-        ],
-        BlockSize::N8 => [
-            (PlaneClass::Luma, TransformBlockSize::N8, 1),
-            (PlaneClass::Chroma, TransformBlockSize::N4, 1),
-            (PlaneClass::Chroma, TransformBlockSize::N4, 1),
-        ],
-    }
 }
 
 fn encoder_vectors() -> Result<Vec<EncoderVector>, String> {

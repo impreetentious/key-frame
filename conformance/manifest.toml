@@ -24,6 +24,50 @@ stream_sha256 = "fe6f8a10af3e67fe5577904e24ca64ff26ad146e7c65e6caeb4a54e2f830ffe
 decoded_yuv_sha256 = "cb11e05cb5da949c0e0f5b5a7cb310df35a96a22c45d1ada70d950859fe697d1"
 
 [[vectors]]
+origin = "hand"
+name = "partition_depth_ladder"
+stream = "hand/partition_depth_ladder.kfv"
+width = 64
+height = 64
+frame_count = 1
+qp = 32
+stream_sha256 = "5ccec987727a4f07fc55dce05a98068159f137d1c9a17d3a7687a5b2f27b6f54"
+decoded_yuv_sha256 = "cb11e05cb5da949c0e0f5b5a7cb310df35a96a22c45d1ada70d950859fe697d1"
+
+[[vectors]]
+origin = "hand"
+name = "every_intra_mode"
+stream = "hand/every_intra_mode.kfv"
+width = 64
+height = 64
+frame_count = 1
+qp = 32
+stream_sha256 = "43b122da7178dee30c9322d1695a06a64989018ffa06938bf5eb5075a0fa77ce"
+decoded_yuv_sha256 = "709eac66a5016ad544ad2c98eaf7df7d1705a88a70395e729b2de566494526ed"
+
+[[vectors]]
+origin = "hand"
+name = "coefficient_size_matrix"
+stream = "hand/coefficient_size_matrix.kfv"
+width = 128
+height = 64
+frame_count = 1
+qp = 32
+stream_sha256 = "6a42f1e7dc7564e73b1dcdd614c1f4c739b874422d09e2c1facc304996314cf4"
+decoded_yuv_sha256 = "27f633964b7b934a91c907c9c964a125b19a328fa78e75255b24a83dff065f73"
+
+[[vectors]]
+origin = "hand"
+name = "pframe_prediction_branches"
+stream = "hand/pframe_prediction_branches.kfv"
+width = 64
+height = 64
+frame_count = 2
+qp = 32
+stream_sha256 = "7254d07ebba92ca0c09af448b97d8277f3e386480a44d39a2099a1233d86c8ca"
+decoded_yuv_sha256 = "2203a98fd84adfbd3cbbfda33c94fcc2d33f0e1d6ebfa4e0ced17c5469ba54e5"
+
+[[vectors]]
 origin = "encoder"
 name = "neutral64_qp28"
 stream = "encoder/neutral64_qp28.kfv"
