@@ -66,6 +66,33 @@ def main() -> int:
     if context_groups != coverage_groups:
         errors.append("coverage groups %s != frozen groups %s" % (coverage_groups, context_groups))
 
+    # Every group states which of its ids a version-one stream can code and
+    # which it cannot. The two halves must partition the group exactly: an id
+    # that is in neither would be silently exempt from the measuring gate, and
+    # one in both would be claimed and excused at the same time.
+    reachable = toml_arrays(COVERAGE, "reachable")
+    reserved = toml_arrays(COVERAGE, "reserved")
+    group_ids = toml_arrays(COVERAGE, "ids")
+    if not (len(reachable) == len(reserved) == len(group_ids)):
+        errors.append("every coverage group needs one ids, one reachable, and one reserved array")
+    else:
+        held = 0
+        for name, ids, live, dead in zip(coverage_groups, group_ids, reachable, reserved):
+            if sorted(live + dead) != ids:
+                errors.append("group %s: reachable plus reserved is not its id list" % name)
+            if set(live) & set(dead):
+                errors.append("group %s: an id is both reachable and reserved" % name)
+            held += len(dead)
+        reasons = re.findall(r'^reserved_reason\s*=\s*"([^"]*)"\s*$', COVERAGE.read_text(encoding="utf-8"), re.MULTILINE)
+        if len(reasons) != len(coverage_groups):
+            errors.append("every coverage group needs a reserved_reason, even an empty one")
+        else:
+            for name, dead, reason in zip(coverage_groups, reserved, reasons):
+                if dead and not reason:
+                    errors.append("group %s reserves ids without saying why" % name)
+                if not dead and reason:
+                    errors.append("group %s reserves nothing but gives a reason" % name)
+
     required_elements = [
         "partition_tree", "skip", "is_inter", "intra_mode", "ref_select", "mvd",
         "has_coeff", "last_x", "last_y", "sig", "gt1", "gt2", "rice_remainder", "nonzero_sign",
@@ -105,7 +132,10 @@ def main() -> int:
         for error in errors:
             print(" - %s" % error)
         return 1
-    print("syntax-coverage: OK — 144 ids, %d groups, %d elements" % (len(coverage_groups), len(coverage_elements)))
+    print(
+        "syntax-coverage: OK — 144 ids across %d groups, %d held in reserve, %d elements"
+        % (len(coverage_groups), sum(len(dead) for dead in reserved), len(coverage_elements))
+    )
     return 0
 
 

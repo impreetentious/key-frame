@@ -28,6 +28,10 @@ specification. Every gate in the repository exists to prove the two agree.
 - Entropy-codes every symbol through an adaptive binary range coder over a
   closed set of 144 contexts, with modeled-entropy costs the encoder reuses for
   its own decisions.
+- States conformance coverage as a measurement rather than a claim: both
+  decoders are instrumented, and the committed streams are required to code
+  every context slot and every syntax element the format can reach, with at
+  least one stream per element that the encoder did not author.
 - Frames the stream in sync-marked packets carrying independent header and
   payload CRC32C, resynchronizes byte-by-byte after damage, and installs a
   decoded frame into the reference state only on complete success.
@@ -63,7 +67,11 @@ detection, dependency invalidation, and resumption at the next valid keyframe: a
 corrupt frame is never concealed, never partially applied, and never allowed into
 later prediction, but nothing is reconstructed from it either, and the frames
 between the damage and the next keyframe are reported as lost rather than
-estimated. Linux x86_64 and macOS arm64 are the supported native targets;
+estimated. Twenty-eight of the 144 context slots are held in reserve: the frozen
+context bank was sized for neighbor conditioning that version one declares but
+does not use, so no stream can reach those slots, and coverage is reported
+against the 116 the format can actually code rather than as a percentage of the
+whole bank. Linux x86_64 and macOS arm64 are the supported native targets;
 Windows is not supported.
 
 ## Stack
@@ -110,8 +118,8 @@ One command runs every gate, in the order continuous integration runs them:
 It checks version, documentation, license, and specification coherence, then the
 range-coder, transform, bitstream, syntax, reference-decoder, probe, intra,
 conformance, inter, entropy, deblock, natural-corpus, rate-control,
-decoder-campaign, and error-matrix gates, then formatting, lints, the
-forbidden-API and decoder-boundary scan, the full test suite, and the
+decoder-campaign, error-matrix, and conformance-coverage gates, then formatting,
+lints, the forbidden-API and decoder-boundary scan, the full test suite, and the
 documentation build.
 
 ## Build and deploy
@@ -136,4 +144,4 @@ preflight green.
 
 ---
 
-**Version:** v0.11.6
+**Version:** v0.11.7

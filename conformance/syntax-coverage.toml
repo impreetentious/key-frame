@@ -1,71 +1,120 @@
-format = "key-frame-syntax-coverage-v1"
+format = "key-frame-syntax-coverage-v2"
 bitstream_version = 1
 context_count = 144
 
-# Maps every frozen context group and every payload syntax element to at least
-# one named vector. Origins are oracle (stdlib writer), hand (literal or
-# syntax-layer construction), or encoder (kfenc at pinned settings). Neighbor-
-# conditioned ids share a group vector even when the live coder currently uses
-# the n0 slot; later coverage work requires a non-encoder vector per unused slot.
+# The inventory of what the conformance suite proves, split into what a
+# version-one stream can code and what it cannot.
+#
+# Every id below is real: `reachable` ids are observed by decoding the named
+# vectors, and `reserved` ids are never observed by any vector at all. Both
+# halves are checked by decoding, not by trusting this file — see
+# `scripts/ci/coverage-gate.sh`. If a change makes a reserved id codable, or
+# stops a reachable one from being coded, the gate fails and this file has to
+# be corrected rather than the claim quietly drifting.
+#
+# The reserved ids exist because the frozen context bank was sized for
+# neighbor conditioning that version one declares but does not use: the coder
+# selects each group's slot from depth, plane class, transform size, and
+# position alone. They are held, not deleted, because the bank is frozen and
+# renumbering it would change every stream ever produced. `docs/adr/` records
+# the decision.
+#
+# `vectors` names the streams that carry the row. A group's vectors must
+# together code every reachable id in it, and every row must name at least one
+# vector that the encoder did not author, so that no element is proved only by
+# the encoder agreeing with itself.
 
 [[groups]]
 name = "partition_split"
 ids = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
-vectors = ["oracle:intra64_dc_all_zero", "hand:uniform_partition_depths"]
+reachable = [0, 3, 6]
+reserved = [1, 2, 4, 5, 7, 8, 9, 10, 11]
+reserved_reason = "decoded-neighbor conditioning is unused, and the minimum block size codes no split decision"
+vectors = ["oracle:intra64_dc_all_zero", "hand:partition_depth_ladder"]
 
 [[groups]]
 name = "skip"
 ids = [12, 13, 14]
+reachable = [12]
+reserved = [13, 14]
+reserved_reason = "the available-neighbor count is unused"
 vectors = ["hand:pframe_prediction_branches"]
 
 [[groups]]
 name = "is_inter"
 ids = [15, 16, 17]
+reachable = [15]
+reserved = [16, 17]
+reserved_reason = "the available-neighbor count is unused"
 vectors = ["hand:pframe_prediction_branches"]
 
 [[groups]]
 name = "intra_mode"
 ids = [18, 19, 20, 21, 22, 23, 24, 25, 26, 27]
+reachable = [18, 21, 22]
+reserved = [19, 20, 23, 24, 25, 26, 27]
+reserved_reason = "the first bin uses one neighbor class, and the mode tree is three fixed bins rather than seven"
 vectors = ["oracle:intra64_dc_all_zero", "hand:every_intra_mode"]
 
 [[groups]]
 name = "ref_select"
 ids = [28, 29]
+reachable = [28]
+reserved = [29]
+reserved_reason = "the median-predictor reference does not select the slot"
 vectors = ["hand:pframe_prediction_branches"]
 
 [[groups]]
 name = "mv_prefix"
 ids = [30, 31, 32, 33, 34, 35]
+reachable = [30, 31, 32, 33, 34, 35]
+reserved = []
+reserved_reason = ""
 vectors = ["hand:pframe_prediction_branches"]
 
 [[groups]]
 name = "has_coeff"
 ids = [36, 37, 38, 39, 40, 41, 42, 43]
+reachable = [37, 38, 39, 40, 41, 42, 43]
+reserved = [36]
+reserved_reason = "luma transforms are the block side capped at thirty-two, so luma never reaches the 4x4 transform"
 vectors = ["oracle:intra64_dc_all_zero", "hand:coefficient_size_matrix"]
 
 [[groups]]
 name = "last_position"
 ids = [44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75]
+reachable = [44, 45, 48, 49, 50, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 64, 65, 66, 68, 69, 70, 71, 72, 73, 74, 75]
+reserved = [46, 47, 51, 62, 63, 67]
+reserved_reason = "each size codes only as many contexted prefix bins as its coordinate needs, and the 32x32 fifth bin is bypass"
 vectors = ["hand:coefficient_size_matrix"]
 
 [[groups]]
 name = "sig"
 ids = [76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119]
+reachable = [76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119]
+reserved = []
+reserved_reason = ""
 vectors = ["hand:coefficient_size_matrix"]
 
 [[groups]]
 name = "gt1"
 ids = [120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135]
+reachable = [120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135]
+reserved = []
+reserved_reason = ""
 vectors = ["hand:coefficient_size_matrix"]
 
 [[groups]]
 name = "gt2"
 ids = [136, 137, 138, 139, 140, 141, 142, 143]
+reachable = [136, 137, 138, 139, 140, 141, 142, 143]
+reserved = []
+reserved_reason = ""
 vectors = ["hand:coefficient_size_matrix"]
 
 [[elements]]
 name = "partition_tree"
-vectors = ["oracle:intra64_dc_all_zero", "hand:uniform_partition_depths"]
+vectors = ["oracle:intra64_dc_all_zero", "hand:partition_depth_ladder"]
 
 [[elements]]
 name = "skip"
