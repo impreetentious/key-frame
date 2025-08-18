@@ -17,6 +17,6 @@ mod syntax;
 mod transform;
 
 pub use coverage::{ReferenceCoverage, ReferenceElement};
-pub use decoder::ReferenceDecoder;
+pub use decoder::{RefSeek, ReferenceDecoder};
 pub use error::ReferenceError;
 pub use status::{RefFrameStatus, RefRecovery, RefStreamReport};

@@ -15,6 +15,17 @@ use crate::{
     transform::inverse_levels,
 };
 
+/// One frame recovered by random access, in this decoder's own vocabulary.
+#[derive(Clone, Debug)]
+pub struct RefSeek {
+    /// The requested frame, cropped to the display dimensions.
+    pub frame: Frame,
+    /// The keyframe this decoder restarted from.
+    pub keyframe_index: u32,
+    /// How many frames it decoded to get there, including that keyframe.
+    pub frames_decoded: usize,
+}
+
 /// A decode plus everything it was instrumented for.
 struct RefInstrumented {
     frames: Vec<Frame>,
@@ -220,6 +231,90 @@ impl ReferenceDecoder {
         self.contexts = Some(contexts);
         self.last_frame_index = Some(packet.frame_index);
         Ok(visible)
+    }
+
+    /// Independently recovers one frame by random access.
+    ///
+    /// Written against the rule rather than against the fast decoder: a P frame
+    /// means nothing without its references and its carried context bank, and a
+    /// keyframe needs neither, so the only legal place to begin part-way into a
+    /// stream is the last keyframe at or before the requested frame. Everything
+    /// from there to the target is decoded in order; everything before it is
+    /// scanned and discarded.
+    ///
+    /// The two passes are deliberate. The first proves the packet sequence is
+    /// intact and finds the entry point; the second decodes. A stream a linear
+    /// decode would reject must not become seekable by looking at less of it.
+    pub fn seek_frame(&mut self, bytes: &[u8], target: u32) -> Result<RefSeek, ReferenceError> {
+        self.invalidate();
+        let result = self.seek_run(bytes, target);
+        if result.is_err() {
+            // Nothing half-decoded may survive a failed seek, or the next
+            // decode could predict from a frame nobody asked for.
+            self.invalidate();
+        }
+        result
+    }
+
+    fn seek_run(&mut self, bytes: &[u8], target: u32) -> Result<RefSeek, ReferenceError> {
+        let (width, height, packet_start) = read_sequence(bytes)?;
+
+        let mut keys = Vec::new();
+        let mut cursor = PacketCursor::new(&bytes[packet_start..]);
+        let mut expected = 0_u32;
+        while let Some(packet) = cursor.next_packet()? {
+            if packet.frame_index != expected {
+                return Err(ReferenceError::new(
+                    packet.frame_index,
+                    "packet.frame_index_gap",
+                ));
+            }
+            if packet.key {
+                keys.push(packet.frame_index);
+            }
+            expected = expected.saturating_add(1);
+        }
+        if expected == 0 {
+            return Err(ReferenceError::new(0, "initial_keyframe"));
+        }
+        if target >= expected {
+            return Err(ReferenceError::new(target, "seek.target"));
+        }
+        let entry = keys
+            .into_iter()
+            .rfind(|index| *index <= target)
+            .ok_or_else(|| ReferenceError::new(target, "seek.entry_missing"))?;
+
+        let mut cursor = PacketCursor::new(&bytes[packet_start..]);
+        let mut frame = None;
+        let mut decoded_count = 0_usize;
+        while let Some(packet) = cursor.next_packet()? {
+            if packet.frame_index < entry {
+                continue;
+            }
+            if packet.frame_index == entry && !packet.key {
+                return Err(ReferenceError::new(
+                    packet.frame_index,
+                    "seek.entry_not_key",
+                ));
+            }
+            if !packet.key && !self.has_references() {
+                return Err(ReferenceError::new(packet.frame_index, "pframe.references"));
+            }
+            let decoded = self.decode_packet(width, height, &packet)?;
+            let visible = self.install(&packet, decoded.padded, decoded.contexts, width, height)?;
+            decoded_count += 1;
+            if packet.frame_index == target {
+                frame = Some(visible);
+                break;
+            }
+        }
+        let frame = frame.ok_or_else(|| ReferenceError::new(target, "seek.target"))?;
+        Ok(RefSeek {
+            frame,
+            keyframe_index: entry,
+            frames_decoded: decoded_count,
+        })
     }
 
     /// Independently decodes a stream that may be damaged, classifying every
