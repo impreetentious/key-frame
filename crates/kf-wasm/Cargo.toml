@@ -1,0 +1,28 @@
+[package]
+name = "kf-wasm"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+kf-bitstream = { path = "../kf-bitstream" }
+kf-dec = { path = "../kf-dec" }
+kf-frame = { path = "../kf-frame" }
+
+# This crate does not inherit the workspace lint table. The workspace forbids
+# `unsafe_code` outright, and a WebAssembly module cannot export a function
+# without it: `#[unsafe(no_mangle)]` is itself the construct the lint names.
+# Denying rather than forbidding keeps the ban in force everywhere except the
+# one module that spells out the boundary contract, which carries a targeted
+# allow and a written invariant per block.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+disallowed_types = "deny"

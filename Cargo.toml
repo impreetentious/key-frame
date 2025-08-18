@@ -13,10 +13,11 @@ members = [
     "crates/kf-spec",
     "crates/kf-tools",
     "crates/kf-transform",
+    "crates/kf-wasm",
 ]
 
 [workspace.package]
-version = "0.11.9"
+version = "0.11.10"
 authors = ["Sidakpreet Singh"]
 edition = "2024"
 license = "MIT"

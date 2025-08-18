@@ -43,6 +43,9 @@ specification. Every gate in the repository exists to prove the two agree.
   cannot drift apart silently.
 - Keeps the entire signal path integer-only: no floating point, no unordered
   iteration, no ambient clocks, no filesystem, no threads.
+- Decodes in the browser through a WebAssembly module that imports nothing, so
+  the artifact a page loads is the same artifact the equality gate decodes every
+  committed stream with, byte for byte against the native hashes.
 - Verifies itself with one command that runs every gate continuous integration
   runs, in the same order.
 
@@ -76,7 +79,7 @@ Windows is not supported.
 
 ## Stack
 
-Rust 1.87.0 · edition 2024 · Bash · Node.js for repository checks
+Rust 1.87.0 · edition 2024 · WebAssembly · Bash · Node.js for repository checks
 
 ## Project docs
 
@@ -95,8 +98,8 @@ Rust 1.87.0 · edition 2024 · Bash · Node.js for repository checks
 
 ## Run locally
 
-Install Rust 1.87.0 — the repository pin selects it automatically — and a
-current Node.js LTS release. Encode, decode, and inspect an 8-bit 4:2:0 input:
+Install Rust 1.87.0 — the repository pin selects it and the WebAssembly target
+automatically — and a current Node.js LTS release. Encode, decode, and inspect an 8-bit 4:2:0 input:
 
 ```sh
 cargo run --release -p kf-tools --bin kfenc -- \
@@ -118,9 +121,9 @@ One command runs every gate, in the order continuous integration runs them:
 It checks version, documentation, license, and specification coherence, then the
 range-coder, transform, bitstream, syntax, reference-decoder, probe, intra,
 conformance, inter, entropy, deblock, natural-corpus, rate-control,
-decoder-campaign, error-matrix, and conformance-coverage gates, then formatting,
-lints, the forbidden-API and decoder-boundary scan, the full test suite, and the
-documentation build.
+decoder-campaign, error-matrix, conformance-coverage, random-access seek, and
+native-to-WebAssembly equality gates, then formatting, lints, the forbidden-API
+and decoder-boundary scan, the full test suite, and the documentation build.
 
 ## Build and deploy
 
@@ -144,4 +147,4 @@ preflight green.
 
 ---
 
-**Version:** v0.11.9
+**Version:** v0.11.10
