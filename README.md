@@ -144,4 +144,4 @@ preflight green.
 
 ---
 
-**Version:** v0.11.7
+**Version:** v0.11.8

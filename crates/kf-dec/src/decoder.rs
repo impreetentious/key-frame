@@ -7,6 +7,7 @@ use kf_range::{ContextBank, CoverageCounter};
 use crate::{
     DecodeError,
     reconstruct::{ReferenceFrames, decode_payload},
+    seek::{SeekOutcome, StreamIndex},
     status::{FrameStatus, Recovery, StreamReport},
 };
 
@@ -63,6 +64,57 @@ impl FastDecoder {
         Ok((decoded.frames, decoded.coverage))
     }
 
+    /// Decodes the single frame at `target` by restarting from the keyframe
+    /// that governs it.
+    ///
+    /// Afterwards the decoder holds the state it would hold had it decoded
+    /// linearly to `target`, so the caller can keep going from there.
+    pub fn seek_frame(&mut self, bytes: &[u8], target: u32) -> Result<SeekOutcome, DecodeError> {
+        // Before anything else, including the index scan: a seek that fails
+        // must not leave the previous stream's references or context bank
+        // installed, or a later decode could predict from an image the caller
+        // never asked for.
+        self.invalidate();
+        let index = StreamIndex::scan(bytes)?;
+        let keyframe_index = index.entry_point(target)?;
+        let decoded = self.decode_window(bytes, Some((keyframe_index, target)))?;
+        let frames_decoded = decoded.frames.len();
+        let frame = decoded
+            .frames
+            .into_iter()
+            .next_back()
+            .ok_or(DecodeError::InvalidFrame {
+                frame_index: target,
+                element: "seek.target",
+            })?;
+        Ok(SeekOutcome {
+            frame,
+            keyframe_index,
+            frames_decoded,
+        })
+    }
+
+    /// Decodes from `target` to the end of the stream, restarting from the
+    /// keyframe that governs `target` and discarding the frames before it.
+    pub fn decode_from(&mut self, bytes: &[u8], target: u32) -> Result<Vec<Frame>, DecodeError> {
+        self.invalidate();
+        let index = StreamIndex::scan(bytes)?;
+        let keyframe_index = index.entry_point(target)?;
+        let last = u32::try_from(index.frame_count().saturating_sub(1)).map_err(|_| {
+            DecodeError::InvalidFrame {
+                frame_index: target,
+                element: "seek.target",
+            }
+        })?;
+        let decoded = self.decode_window(bytes, Some((keyframe_index, last)))?;
+        let skip =
+            usize::try_from(target - keyframe_index).map_err(|_| DecodeError::InvalidFrame {
+                frame_index: target,
+                element: "seek.target",
+            })?;
+        Ok(decoded.frames.into_iter().skip(skip).collect())
+    }
+
     /// Decodes a stream and records the context bank after every superblock.
     pub fn decode_stream_traced(
         &mut self,
@@ -73,6 +125,23 @@ impl FastDecoder {
     }
 
     fn decode_stream_instrumented(&mut self, bytes: &[u8]) -> Result<Instrumented, DecodeError> {
+        self.decode_window(bytes, None)
+    }
+
+    /// Decodes either a whole stream (`window` absent) or the inclusive index
+    /// range a seek asked for.
+    ///
+    /// A window's first packet must be the keyframe the caller resolved: a
+    /// keyframe needs neither carried contexts nor an old reference, so it is
+    /// the only place a decode can legitimately begin part-way into a stream.
+    /// Packets before it are scanned — their headers and payload checksums are
+    /// still validated — but never entropy-decoded, which is the whole point of
+    /// seeking.
+    fn decode_window(
+        &mut self,
+        bytes: &[u8],
+        window: Option<(u32, u32)>,
+    ) -> Result<Instrumented, DecodeError> {
         self.invalidate();
         let sequence = SequenceHeader::decode(bytes)?;
         let packet_bytes = bytes
@@ -97,14 +166,28 @@ impl FastDecoder {
                     return Err(error.into());
                 }
             };
+            if let Some((start, _)) = window {
+                if packet.frame_index < start {
+                    continue;
+                }
+            }
             let expected_index = self
                 .last_frame_index
-                .map_or(0, |index| index.saturating_add(1));
+                .map_or(window.map_or(0, |(start, _)| start), |index| {
+                    index.saturating_add(1)
+                });
             if packet.frame_index != expected_index {
                 self.invalidate();
                 return Err(DecodeError::InvalidFrame {
                     frame_index: packet.frame_index,
                     element: "packet.frame_index_gap",
+                });
+            }
+            if window.is_some_and(|(start, _)| packet.frame_index == start) && !packet.flags.key {
+                self.invalidate();
+                return Err(DecodeError::InvalidFrame {
+                    frame_index: packet.frame_index,
+                    element: "seek.entry_not_key",
                 });
             }
             let frame_type = if packet.flags.key {
@@ -163,12 +246,28 @@ impl FastDecoder {
             self.last_frame_index = Some(packet.frame_index);
             checkpoints.extend(decoded.checkpoints);
             frames.push(visible_frame);
+            if window.is_some_and(|(_, end)| packet.frame_index == end) {
+                break;
+            }
         }
         if frames.is_empty() {
             return Err(DecodeError::InvalidFrame {
                 frame_index: 0,
-                element: "initial_keyframe",
+                element: if window.is_some() {
+                    "seek.entry_missing"
+                } else {
+                    "initial_keyframe"
+                },
             });
+        }
+        if let Some((_, end)) = window {
+            if self.last_frame_index != Some(end) {
+                self.invalidate();
+                return Err(DecodeError::InvalidFrame {
+                    frame_index: end,
+                    element: "seek.target",
+                });
+            }
         }
         Ok(Instrumented {
             frames,
