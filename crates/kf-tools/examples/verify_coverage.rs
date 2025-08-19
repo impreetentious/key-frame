@@ -201,10 +201,10 @@ fn verify() -> Result<String, Vec<String>> {
             failures.push(format!("no vector codes element {}", element.name));
         }
         for key in &element.vectors {
-            if let Some((_, measured)) = named(key) {
-                if !measured.elements.contains(&element.name) {
-                    failures.push(format!("{key} does not code element {}", element.name));
-                }
+            if let Some((_, measured)) = named(key)
+                && !measured.elements.contains(&element.name)
+            {
+                failures.push(format!("{key} does not code element {}", element.name));
             }
         }
         if !element
@@ -251,8 +251,7 @@ fn measure(path: &std::path::Path) -> Result<Measured, String> {
     let reference_contexts: BTreeSet<u16> = reference.context_ids().into_iter().collect();
     if fast_contexts != reference_contexts {
         return Err(format!(
-            "the two decoders disagree on coded contexts: {:?} against {:?}",
-            fast_contexts, reference_contexts
+            "the two decoders disagree on coded contexts: {fast_contexts:?} against {reference_contexts:?}"
         ));
     }
 

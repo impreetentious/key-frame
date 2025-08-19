@@ -385,15 +385,15 @@ fn parse_decisions(contents: &str) -> Vec<(EdgeKind, bool, bool, u8)> {
             intra = Some(value == "true");
         } else if let Some(value) = line.strip_prefix("either_coded = ") {
             coded = Some(value == "true");
-        } else if let Some(value) = line.strip_prefix("strength = ") {
-            if let (Some(kind), Some(intra), Some(coded)) = (kind, intra, coded) {
-                rows.push((
-                    kind,
-                    intra,
-                    coded,
-                    value.parse::<u8>().expect("invariant: strength is u8"),
-                ));
-            }
+        } else if let Some(value) = line.strip_prefix("strength = ")
+            && let (Some(kind), Some(intra), Some(coded)) = (kind, intra, coded)
+        {
+            rows.push((
+                kind,
+                intra,
+                coded,
+                value.parse::<u8>().expect("invariant: strength is u8"),
+            ));
         }
     }
     rows

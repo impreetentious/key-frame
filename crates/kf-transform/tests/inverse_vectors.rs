@@ -53,14 +53,13 @@ fn literal_golden_asset_replays_all_cases() {
             input = Some(parse_array(value));
         } else if let Some(value) = line.strip_prefix("expected = ") {
             expected = Some(parse_array(value));
-        } else if line.is_empty() {
-            if let (Some(size), Some(input), Some(expected)) =
+        } else if line.is_empty()
+            && let (Some(size), Some(input), Some(expected)) =
                 (size.take(), input.take(), expected.take())
-            {
-                let transform_size = TransformSize::try_from(size).unwrap();
-                assert_eq!(inverse_transform(&input, transform_size).unwrap(), expected);
-                count += 1;
-            }
+        {
+            let transform_size = TransformSize::try_from(size).unwrap();
+            assert_eq!(inverse_transform(&input, transform_size).unwrap(), expected);
+            count += 1;
         }
     }
     assert_eq!(count, 24);

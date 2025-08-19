@@ -1,4 +1,8 @@
 [toolchain]
-channel = "1.87.0"
+channel = "1.88.0"
 profile = "minimal"
 components = ["rustfmt", "clippy"]
+# The projection room's decoder is the same artifact the equality gate runs, so
+# the WebAssembly target is part of the pinned toolchain rather than something a
+# continuous-integration file remembers to add.
+targets = ["wasm32-unknown-unknown"]

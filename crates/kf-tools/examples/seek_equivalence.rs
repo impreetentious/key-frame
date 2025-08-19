@@ -245,13 +245,13 @@ fn check_entry_points(bytes: &[u8]) -> Result<(), Vec<String>> {
             "seeking to keyframe {last_key} resolved to entry point {entry}"
         ));
     }
-    if let Ok(outcome) = FastDecoder::new().seek_frame(bytes, last_key) {
-        if outcome.frames_decoded != 1 {
-            failures.push(format!(
-                "seeking to keyframe {last_key} decoded {} frames rather than one",
-                outcome.frames_decoded
-            ));
-        }
+    if let Ok(outcome) = FastDecoder::new().seek_frame(bytes, last_key)
+        && outcome.frames_decoded != 1
+    {
+        failures.push(format!(
+            "seeking to keyframe {last_key} decoded {} frames rather than one",
+            outcome.frames_decoded
+        ));
     }
     if failures.is_empty() {
         Ok(())

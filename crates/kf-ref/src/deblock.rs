@@ -388,13 +388,13 @@ fn load_tables() -> Tables {
             intra = Some(value == "true");
         } else if let Some(value) = line.strip_prefix("either_coded = ") {
             coded = Some(value == "true");
-        } else if let Some(value) = line.strip_prefix("strength = ") {
-            if let (Some(kind), Some(intra), Some(coded)) = (kind, intra, coded) {
-                let kind_index = usize::from(kind == Kind::DerivedTransform);
-                tables.strength[kind_index][usize::from(intra)][usize::from(coded)] =
-                    value.parse().expect("invariant: strength is u8");
-                filled[kind_index][usize::from(intra)][usize::from(coded)] = true;
-            }
+        } else if let Some(value) = line.strip_prefix("strength = ")
+            && let (Some(kind), Some(intra), Some(coded)) = (kind, intra, coded)
+        {
+            let kind_index = usize::from(kind == Kind::DerivedTransform);
+            tables.strength[kind_index][usize::from(intra)][usize::from(coded)] =
+                value.parse().expect("invariant: strength is u8");
+            filled[kind_index][usize::from(intra)][usize::from(coded)] = true;
         }
     }
     for intra in [false, true] {

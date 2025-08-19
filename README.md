@@ -79,7 +79,7 @@ Windows is not supported.
 
 ## Stack
 
-Rust 1.87.0 · edition 2024 · WebAssembly · Bash · Node.js for repository checks
+Rust 1.88.0 · edition 2024 · WebAssembly · Bash · Node.js for repository checks
 
 ## Project docs
 
@@ -98,7 +98,7 @@ Rust 1.87.0 · edition 2024 · WebAssembly · Bash · Node.js for repository che
 
 ## Run locally
 
-Install Rust 1.87.0 — the repository pin selects it and the WebAssembly target
+Install Rust 1.88.0 — the repository pin selects it and the WebAssembly target
 automatically — and a current Node.js LTS release. Encode, decode, and inspect an 8-bit 4:2:0 input:
 
 ```sh
@@ -147,4 +147,4 @@ preflight green.
 
 ---
 
-**Version:** v0.11.10
+**Version:** v0.12.0

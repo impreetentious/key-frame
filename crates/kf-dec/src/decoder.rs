@@ -166,10 +166,10 @@ impl FastDecoder {
                     return Err(error.into());
                 }
             };
-            if let Some((start, _)) = window {
-                if packet.frame_index < start {
-                    continue;
-                }
+            if let Some((start, _)) = window
+                && packet.frame_index < start
+            {
+                continue;
             }
             let expected_index = self
                 .last_frame_index
@@ -260,14 +260,14 @@ impl FastDecoder {
                 },
             });
         }
-        if let Some((_, end)) = window {
-            if self.last_frame_index != Some(end) {
-                self.invalidate();
-                return Err(DecodeError::InvalidFrame {
-                    frame_index: end,
-                    element: "seek.target",
-                });
-            }
+        if let Some((_, end)) = window
+            && self.last_frame_index != Some(end)
+        {
+            self.invalidate();
+            return Err(DecodeError::InvalidFrame {
+                frame_index: end,
+                element: "seek.target",
+            });
         }
         Ok(Instrumented {
             frames,
