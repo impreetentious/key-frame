@@ -24,3 +24,11 @@ inspector/dist/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# The projection room's dependencies and build output, plus the two runtime
+# files `scripts/build-inspector.sh` produces: the decoder module is a build
+# artifact and the sample clip is a copy of a committed conformance stream.
+inspector/node_modules/
+inspector/dist/
+inspector/public/kf_wasm.wasm
+inspector/public/sample.kfv

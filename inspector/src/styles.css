@@ -1,0 +1,265 @@
+/*
+ * Hand-written, no framework. The page is a workbench: a dark ground so the
+ * decoded picture is the brightest thing on screen, and overlays that read on
+ * top of any frame the codec might produce.
+ */
+
+:root {
+  color-scheme: dark;
+  --ground: #101318;
+  --panel: #171c24;
+  --edge: #262d38;
+  --ink: #e6e9ee;
+  --ink-quiet: #9aa4b2;
+  --accent: #ffd67a;
+  --warn: #ff9d7a;
+  --good: #7ce0a8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.shell {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 28px 20px 56px;
+}
+
+.masthead h1 {
+  margin: 0 0 4px;
+  font-size: 1.6rem;
+  letter-spacing: -0.01em;
+}
+
+.lede {
+  margin: 0 0 22px;
+  max-width: 62ch;
+  color: var(--ink-quiet);
+}
+
+.stage {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(300px, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .stage {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.viewport {
+  position: relative;
+  max-width: 100%;
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  overflow: hidden;
+  background: #000;
+}
+
+.picture,
+.overlay {
+  display: block;
+  /* Integer scaling with no smoothing: the page shows the samples the decoder
+     produced, not an interpolation of them. */
+  image-rendering: pixelated;
+  max-width: 100%;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+}
+
+.side {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  padding: 14px 16px;
+}
+
+.card h2 {
+  margin: 0 0 10px;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-quiet);
+}
+
+.card h3 {
+  margin: 16px 0 8px;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-quiet);
+}
+
+dl {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+  gap: 4px 14px;
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+dt {
+  color: var(--ink-quiet);
+}
+
+dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.toggles {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.toggles label,
+.basis label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.9rem;
+}
+
+.basis {
+  margin: 12px 0 0;
+  border: 1px solid var(--edge);
+  border-radius: 5px;
+  padding: 8px 12px 10px;
+}
+
+.basis legend {
+  padding: 0 6px;
+  font-size: 0.78rem;
+  color: var(--ink-quiet);
+}
+
+.disclaimer,
+.hint {
+  margin: 12px 0 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--ink-quiet);
+}
+
+.badge {
+  margin: 12px 0 0;
+  padding: 8px 10px;
+  border-radius: 5px;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  border: 1px solid var(--edge);
+}
+
+.badge.match {
+  color: var(--good);
+  border-color: rgba(124, 224, 168, 0.35);
+}
+
+.badge.mismatch {
+  color: var(--warn);
+  border-color: rgba(255, 157, 122, 0.4);
+}
+
+.error {
+  margin: 16px 0 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 157, 122, 0.45);
+  border-radius: 5px;
+  color: var(--warn);
+}
+
+.scrub {
+  margin-top: 22px;
+  position: relative;
+}
+
+.scrub label {
+  display: grid;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--ink-quiet);
+}
+
+.scrub input[type="range"] {
+  width: 100%;
+}
+
+.ticks {
+  position: relative;
+  height: 8px;
+  margin: 0 0 2px;
+}
+
+/* Keyframe ticks: the only points a scrub can jump to without decoding
+   everything in between, so they are marked rather than left to be discovered
+   by watching the frame counter stall. */
+.tick {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  height: 8px;
+  background: var(--accent);
+  transform: translateX(-1px);
+}
+
+.tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin-top: 22px;
+}
+
+.file {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.85rem;
+  color: var(--ink-quiet);
+}
+
+button {
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 5px;
+  padding: 7px 12px;
+  cursor: pointer;
+}
+
+button:hover {
+  border-color: var(--accent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
