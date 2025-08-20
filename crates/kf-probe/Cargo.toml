@@ -1,5 +1,5 @@
 [package]
-name = "kf-tools"
+name = "kf-probe"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -8,13 +8,7 @@ publish = false
 
 [dependencies]
 kf-bitstream = { path = "../kf-bitstream" }
-kf-core = { path = "../kf-core" }
-kf-dec = { path = "../kf-dec" }
-kf-enc = { path = "../kf-enc" }
-kf-frame = { path = "../kf-frame" }
-kf-probe = { path = "../kf-probe" }
 kf-range = { path = "../kf-range" }
-kf-ref = { path = "../kf-ref" }
 
 [lints]
 workspace = true
