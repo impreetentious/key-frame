@@ -7,6 +7,7 @@
 use kf_bitstream::{SEQUENCE_HEADER_SIZE, SequenceHeader};
 use kf_dec::{FastDecoder, StreamIndex};
 use kf_frame::Frame;
+use kf_probe::probe_stream;
 
 /// Every way a call across the boundary can fail.
 ///
@@ -20,6 +21,7 @@ pub enum Status {
     BadStream = 2,
     BadFrameIndex = 3,
     DecodeFailed = 4,
+    ProbeFailed = 5,
 }
 
 impl Status {
@@ -124,6 +126,31 @@ impl Session {
                 self.output.clear();
                 self.fail(&format!("frame {index} did not decode: {error}"));
                 Status::DecodeFailed
+            }
+        }
+    }
+
+    /// Reports the syntax of the whole stream as JSON, holding it for the host
+    /// to read as UTF-8 bytes.
+    ///
+    /// The probe parses; it does not reconstruct pixels. A host asking for both
+    /// makes two calls, because the two answers have nothing to do with each
+    /// other and batching them would only make the larger one wait.
+    pub fn probe(&mut self) -> Status {
+        if self.info.is_none() {
+            self.fail("no stream is open");
+            return Status::NoStream;
+        }
+        match probe_stream(&self.bytes) {
+            Ok(report) => {
+                self.output = report.to_json().into_bytes();
+                self.message.clear();
+                Status::Ok
+            }
+            Err(error) => {
+                self.output.clear();
+                self.fail(&format!("the stream did not probe: {error}"));
+                Status::ProbeFailed
             }
         }
     }
@@ -291,5 +318,26 @@ mod tests {
         assert_eq!(Status::BadStream.code(), 2);
         assert_eq!(Status::BadFrameIndex.code(), 3);
         assert_eq!(Status::DecodeFailed.code(), 4);
+        assert_eq!(Status::ProbeFailed.code(), 5);
+    }
+
+    #[test]
+    fn probing_produces_the_same_json_the_command_line_tool_writes() {
+        let mut session = Session::new();
+        session.open(ORACLE_STREAM.to_vec());
+        assert_eq!(session.probe(), Status::Ok);
+        let json = core::str::from_utf8(session.output()).expect("the probe emits UTF-8");
+        assert_eq!(
+            json,
+            kf_probe::probe_stream(&ORACLE_STREAM)
+                .expect("the oracle stream probes")
+                .to_json()
+        );
+        assert!(json.starts_with('{') && json.trim_end().ends_with('}'));
+    }
+
+    #[test]
+    fn probing_without_a_stream_is_refused() {
+        assert_eq!(Session::new().probe(), Status::NoStream);
     }
 }

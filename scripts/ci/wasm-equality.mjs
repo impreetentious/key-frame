@@ -14,10 +14,16 @@
 // compared against the decoded-YUV hash the native decoders committed. A wasm
 // build that agreed with itself but not with the manifest would otherwise look
 // perfectly healthy.
+//
+// With `--probe-out DIR` the module's syntax JSON for each stream is written
+// there, so the gate script can diff it against what the native `kfprobe`
+// writes. The inspector reads that JSON for every overlay it draws, and a
+// number that differed between the two builds would be a wrong picture rather
+// than a wrong pixel — harder to notice and no less wrong.
 
 import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -33,6 +39,14 @@ const WASM_GZIP_BUDGET_BYTES = 1.5 * 1024 * 1024;
 const EXPECTED_ABI_VERSION = 1;
 
 const failures = [];
+
+const probeFlag = process.argv.indexOf("--probe-out");
+const probeOutDir = probeFlag === -1 ? null : process.argv[probeFlag + 1];
+if (probeFlag !== -1 && !probeOutDir) {
+  console.error("wasm-equality: --probe-out needs a directory");
+  process.exit(1);
+}
+if (probeOutDir) mkdirSync(probeOutDir, { recursive: true });
 
 function parseManifest(text) {
   const vectors = [];
@@ -166,6 +180,32 @@ async function checkVector(moduleBytes, vector) {
 
   if (exports.kf_decode_frame(vector.frame_count) === 0) {
     failures.push(`${label}: seeking past the last frame succeeded`);
+  }
+
+  const probeStatus = exports.kf_probe();
+  if (probeStatus !== 0) {
+    failures.push(`${label}: probe failed (${probeStatus}): ${readMessage(exports)}`);
+    return;
+  }
+  const probeJson = readOutput(exports);
+  if (probeJson.length === 0) {
+    failures.push(`${label}: the probe produced no output`);
+    return;
+  }
+  try {
+    JSON.parse(probeJson.toString("utf8"));
+  } catch (error) {
+    failures.push(`${label}: the probe output is not valid JSON: ${error.message}`);
+    return;
+  }
+  if (probeOutDir) {
+    // `kfprobe` prints its report as a line, so the written file carries the
+    // same trailing newline. The comparison is about the report, not about
+    // which side happens to terminate the file.
+    writeFileSync(
+      path.join(probeOutDir, `${vector.origin}_${vector.name}.json`),
+      Buffer.concat([probeJson, Buffer.from("\n")]),
+    );
   }
 }
 

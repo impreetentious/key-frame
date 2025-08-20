@@ -13,6 +13,7 @@ crate-type = ["cdylib", "rlib"]
 kf-bitstream = { path = "../kf-bitstream" }
 kf-dec = { path = "../kf-dec" }
 kf-frame = { path = "../kf-frame" }
+kf-probe = { path = "../kf-probe" }
 
 # This crate does not inherit the workspace lint table. The workspace forbids
 # `unsafe_code` outright, and a WebAssembly module cannot export a function
