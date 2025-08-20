@@ -94,10 +94,10 @@ pub extern "C" fn kf_decode_frame(index: u32) -> u32 {
     SESSION.with_borrow_mut(|session| session.decode_frame(index).code())
 }
 
-/// Reports the whole stream's syntax as UTF-8 JSON in the output buffer.
+/// Reports one frame's syntax as UTF-8 JSON in the output buffer.
 #[unsafe(no_mangle)]
-pub extern "C" fn kf_probe() -> u32 {
-    SESSION.with_borrow_mut(|session| session.probe().code())
+pub extern "C" fn kf_probe_frame(index: u32) -> u32 {
+    SESSION.with_borrow_mut(|session| session.probe(index).code())
 }
 
 /// Decodes every frame in order into one buffer.

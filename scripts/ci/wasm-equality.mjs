@@ -181,8 +181,11 @@ async function checkVector(moduleBytes, vector) {
   if (exports.kf_decode_frame(vector.frame_count) === 0) {
     failures.push(`${label}: seeking past the last frame succeeded`);
   }
+  if (exports.kf_probe_frame(vector.frame_count) === 0) {
+    failures.push(`${label}: probing past the last frame succeeded`);
+  }
 
-  const probeStatus = exports.kf_probe();
+  const probeStatus = exports.kf_probe_frame(0);
   if (probeStatus !== 0) {
     failures.push(`${label}: probe failed (${probeStatus}): ${readMessage(exports)}`);
     return;

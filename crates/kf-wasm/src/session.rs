@@ -7,7 +7,7 @@
 use kf_bitstream::{SEQUENCE_HEADER_SIZE, SequenceHeader};
 use kf_dec::{FastDecoder, StreamIndex};
 use kf_frame::Frame;
-use kf_probe::probe_stream;
+use kf_probe::probe_frame;
 
 /// Every way a call across the boundary can fail.
 ///
@@ -130,18 +130,25 @@ impl Session {
         }
     }
 
-    /// Reports the syntax of the whole stream as JSON, holding it for the host
-    /// to read as UTF-8 bytes.
+    /// Reports one frame's syntax as JSON, holding it for the host to read as
+    /// UTF-8 bytes.
     ///
     /// The probe parses; it does not reconstruct pixels. A host asking for both
     /// makes two calls, because the two answers have nothing to do with each
     /// other and batching them would only make the larger one wait.
-    pub fn probe(&mut self) -> Status {
-        if self.info.is_none() {
+    pub fn probe(&mut self, index: u32) -> Status {
+        let Some(info) = self.info else {
             self.fail("no stream is open");
             return Status::NoStream;
+        };
+        if index >= info.frame_count {
+            self.fail(&format!(
+                "frame {index} is past the last frame of {}",
+                info.frame_count
+            ));
+            return Status::BadFrameIndex;
         }
-        match probe_stream(&self.bytes) {
+        match probe_frame(&self.bytes, index) {
             Ok(report) => {
                 self.output = report.to_json().into_bytes();
                 self.message.clear();
@@ -149,7 +156,7 @@ impl Session {
             }
             Err(error) => {
                 self.output.clear();
-                self.fail(&format!("the stream did not probe: {error}"));
+                self.fail(&format!("frame {index} did not probe: {error}"));
                 Status::ProbeFailed
             }
         }
@@ -325,11 +332,11 @@ mod tests {
     fn probing_produces_the_same_json_the_command_line_tool_writes() {
         let mut session = Session::new();
         session.open(ORACLE_STREAM.to_vec());
-        assert_eq!(session.probe(), Status::Ok);
+        assert_eq!(session.probe(0), Status::Ok);
         let json = core::str::from_utf8(session.output()).expect("the probe emits UTF-8");
         assert_eq!(
             json,
-            kf_probe::probe_stream(&ORACLE_STREAM)
+            kf_probe::probe_frame(&ORACLE_STREAM, 0)
                 .expect("the oracle stream probes")
                 .to_json()
         );
@@ -338,6 +345,13 @@ mod tests {
 
     #[test]
     fn probing_without_a_stream_is_refused() {
-        assert_eq!(Session::new().probe(), Status::NoStream);
+        assert_eq!(Session::new().probe(0), Status::NoStream);
+    }
+
+    #[test]
+    fn probing_a_frame_past_the_end_is_refused() {
+        let mut session = Session::new();
+        session.open(ORACLE_STREAM.to_vec());
+        assert_eq!(session.probe(1), Status::BadFrameIndex);
     }
 }

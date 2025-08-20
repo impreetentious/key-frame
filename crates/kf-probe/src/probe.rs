@@ -121,20 +121,83 @@ fn block_json(block: &BlockProbe) -> String {
 
 /// Parses and canonical-shadow-replays the first keyframe in a stream.
 pub fn probe_stream(bytes: &[u8]) -> Result<ProbeReport, BitstreamError> {
+    probe_frame(bytes, 0)
+}
+
+/// Reports one frame's syntax, entering at the keyframe that governs it.
+///
+/// A P frame's syntax cannot be read in isolation: its context bank is whatever
+/// the frames before it left behind, and reading it from the literal initials
+/// would decode different symbols from the same bits. So the probe re-enters at
+/// the last keyframe at or before `target` and replays every frame in between,
+/// exactly as a decoder would, and reports only the last one.
+///
+/// The intervening frames go through the same shadow replay as the target
+/// rather than a cheaper parse-only path. Their reports are discarded, which
+/// costs work that is never shown — and buys the guarantee that the state the
+/// target inherits was produced by the same code that produced the state it is
+/// compared against. Two paths here would be two chances to disagree.
+pub fn probe_frame(bytes: &[u8], target: u32) -> Result<ProbeReport, BitstreamError> {
     let sequence = SequenceHeader::decode(bytes)?;
     let packet_region = bytes
         .get(SEQUENCE_HEADER_SIZE..)
         .ok_or_else(|| invalid("probe.packet_region"))?;
     let mut scanner = PacketScanner::new(packet_region);
-    let packet = scanner
-        .next_packet()?
-        .ok_or_else(|| invalid("probe.packet"))?;
-    if !packet.flags.key {
+    let mut packets = Vec::new();
+    while let Some(packet) = scanner.next_packet()? {
+        let expected = u32::try_from(packets.len()).map_err(|_| invalid("probe.frame_index"))?;
+        if packet.frame_index != expected {
+            return Err(invalid("probe.frame_index_gap"));
+        }
+        packets.push(packet);
+    }
+    let first = packets.first().ok_or_else(|| invalid("probe.packet"))?;
+    if !first.flags.key {
         return Err(invalid("probe.initial_nonkey"));
     }
+    let position = usize::try_from(target).map_err(|_| invalid("probe.frame_index"))?;
+    if position >= packets.len() {
+        return Err(invalid("probe.frame_index"));
+    }
+    let entry = packets[..=position]
+        .iter()
+        .rposition(|packet| packet.flags.key)
+        .ok_or_else(|| invalid("probe.entry_missing"))?;
 
-    let mut reader = SyntaxReader::new(&packet.payload, ContextBank::initial())?;
-    let mut writer = SyntaxWriter::new(ContextBank::initial());
+    let mut carried = ContextBank::initial();
+    let mut report = None;
+    for packet in &packets[entry..=position] {
+        let frame_type = if packet.flags.key {
+            FrameType::Key
+        } else {
+            FrameType::P
+        };
+        let entering = if packet.flags.key {
+            ContextBank::initial()
+        } else {
+            carried.clone()
+        };
+        let scanned = scan_frame(&sequence, packet, frame_type, entering)?;
+        carried = scanned.contexts;
+        report = Some(scanned.report);
+    }
+    report.ok_or_else(|| invalid("probe.frame_index"))
+}
+
+/// One frame's report plus the context bank the next frame inherits.
+struct ScannedFrame {
+    report: ProbeReport,
+    contexts: ContextBank,
+}
+
+fn scan_frame(
+    sequence: &SequenceHeader,
+    packet: &kf_bitstream::FramePacket,
+    frame_type: FrameType,
+    entering: ContextBank,
+) -> Result<ScannedFrame, BitstreamError> {
+    let mut reader = SyntaxReader::new(&packet.payload, entering.clone())?;
+    let mut writer = SyntaxWriter::new(entering);
     let padded_width = sequence.width.div_ceil(64) * 64;
     let padded_height = sequence.height.div_ceil(64) * 64;
     let mut superblocks = Vec::new();
@@ -149,18 +212,22 @@ pub fn probe_stream(bytes: &[u8]) -> Result<ProbeReport, BitstreamError> {
 
             for (x, y, size) in positions {
                 let before = writer.stats().clone();
-                let prediction = reader.read_prediction(FrameType::Key)?;
-                writer.write_prediction(FrameType::Key, prediction)?;
+                let prediction = reader.read_prediction(frame_type)?;
+                writer.write_prediction(frame_type, prediction)?;
                 let mut dc_energy = 0_u64;
-                for (plane, transform, count) in transform_schedule(size) {
-                    for _ in 0..count {
-                        let levels = reader.read_coefficients(plane, transform)?;
-                        dc_energy = dc_energy.saturating_add(
-                            levels
-                                .first()
-                                .map_or(0, |level| u64::from(level.unsigned_abs())),
-                        );
-                        writer.write_coefficients(plane, transform, &levels)?;
+                // A skipped block codes no residual at all, so there is nothing
+                // to read and nothing to replay.
+                if !matches!(prediction, Prediction::Skip { .. }) {
+                    for (plane, transform, count) in transform_schedule(size) {
+                        for _ in 0..count {
+                            let levels = reader.read_coefficients(plane, transform)?;
+                            dc_energy = dc_energy.saturating_add(
+                                levels
+                                    .first()
+                                    .map_or(0, |level| u64::from(level.unsigned_abs())),
+                            );
+                            writer.write_coefficients(plane, transform, &levels)?;
+                        }
                     }
                 }
                 let after = writer.stats().clone();
@@ -194,8 +261,9 @@ pub fn probe_stream(bytes: &[u8]) -> Result<ProbeReport, BitstreamError> {
         }
     }
 
+    let contexts = reader.contexts().clone();
     let (replay, replay_contexts) = writer.finish();
-    if reader.contexts() != &replay_contexts {
+    if contexts != replay_contexts {
         return Err(invalid("probe.context_lockstep"));
     }
     let first_mismatch_offset = packet
@@ -214,20 +282,23 @@ pub fn probe_stream(bytes: &[u8]) -> Result<ProbeReport, BitstreamError> {
         .filter(|event| event.finalization)
         .map(|event| u64::from(event.bytes))
         .sum();
-    Ok(ProbeReport {
-        width: sequence.width,
-        height: sequence.height,
-        frame_index: packet.frame_index,
-        key: packet.flags.key,
-        golden_refresh: packet.flags.golden_refresh,
-        show: packet.flags.show,
-        frame_qp: packet.frame_qp,
-        input_payload_len: packet.payload.len(),
-        canonical_replay_payload_len: replay.bytes.len(),
-        canonical_payload_match: first_mismatch_offset.is_none(),
-        first_mismatch_offset,
-        frame_flush_bytes,
-        superblocks,
+    Ok(ScannedFrame {
+        report: ProbeReport {
+            width: sequence.width,
+            height: sequence.height,
+            frame_index: packet.frame_index,
+            key: packet.flags.key,
+            golden_refresh: packet.flags.golden_refresh,
+            show: packet.flags.show,
+            frame_qp: packet.frame_qp,
+            input_payload_len: packet.payload.len(),
+            canonical_replay_payload_len: replay.bytes.len(),
+            canonical_payload_match: first_mismatch_offset.is_none(),
+            first_mismatch_offset,
+            frame_flush_bytes,
+            superblocks,
+        },
+        contexts,
     })
 }
 

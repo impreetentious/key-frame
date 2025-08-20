@@ -10,5 +10,9 @@ publish = false
 kf-bitstream = { path = "../kf-bitstream" }
 kf-range = { path = "../kf-range" }
 
+[dev-dependencies]
+kf-enc = { path = "../kf-enc" }
+kf-frame = { path = "../kf-frame" }
+
 [lints]
 workspace = true

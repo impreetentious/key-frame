@@ -15,4 +15,4 @@
 
 mod probe;
 
-pub use probe::{BlockProbe, ProbeReport, SuperblockProbe, probe_stream};
+pub use probe::{BlockProbe, ProbeReport, SuperblockProbe, probe_frame, probe_stream};
