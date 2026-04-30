@@ -1,15 +1,17 @@
 {
   "name": "key-frame-projection-room",
   "private": true,
-  "version": "0.12.4",
+  "version": "0.12.5",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "smoke": "playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.54.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.0",

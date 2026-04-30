@@ -10,7 +10,7 @@ if ! grep -q '^license = "MIT"$' Cargo.toml; then
   echo 'license-coherence: Cargo.toml must declare MIT'
   status=1
 fi
-if ! grep -q '^\[MIT\](LICENSE) © 2024-2025 Sidakpreet Singh$' README.md; then
+if ! grep -q '^\[MIT\](LICENSE) © 2024-2026 Sidakpreet Singh$' README.md; then
   echo 'license-coherence: README license line is missing or inconsistent'
   status=1
 fi

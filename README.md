@@ -46,6 +46,10 @@ specification. Every gate in the repository exists to prove the two agree.
 - Decodes in the browser through a WebAssembly module that imports nothing, so
   the artifact a page loads is the same artifact the equality gate decodes every
   committed stream with, byte for byte against the native hashes.
+- Ships the projection room: a static page that decodes a stream live, scrubs it
+  with keyframe ticks, draws six syntax overlays, answers a click with the
+  block's full syntax, and shares any of it as a link. Nothing on that page is a
+  pre-decoded picture.
 - Verifies itself with one command that runs every gate continuous integration
   runs, in the same order.
 
@@ -79,7 +83,8 @@ Windows is not supported.
 
 ## Stack
 
-Rust 1.88.0 · edition 2024 · WebAssembly · Bash · Node.js for repository checks
+Rust 1.88.0 · edition 2024 · WebAssembly · React · TypeScript · Vite · Bash ·
+Node.js for repository checks
 
 ## Project docs
 
@@ -95,6 +100,9 @@ Rust 1.88.0 · edition 2024 · WebAssembly · Bash · Node.js for repository che
 - [`corpus/`](corpus/) pins the source clips used for measurement and for the
   bit-exactness proof on natural video; the clips themselves are fetched by
   checksum, never redistributed.
+- [`inspector/`](inspector/) is the projection room and the cutting room: the
+  browser page that decodes streams live and the catalogue of real defects the
+  gates have found, each pinned to the stream that produced it.
 
 ## Run locally
 
@@ -108,6 +116,13 @@ cargo run --release -p kf-tools --bin kfenc -- \
 cargo run --release -p kf-tools --bin kfdec -- \
   output.kfv --output decoded.y4m
 cargo run --release -p kf-tools --bin kfprobe -- output.kfv
+# or: --frame N to report a later frame
+```
+
+Build the projection room and open `inspector/dist` with any static server:
+
+```sh
+./scripts/build-inspector.sh
 ```
 
 ## Verify
@@ -122,8 +137,9 @@ It checks version, documentation, license, and specification coherence, then the
 range-coder, transform, bitstream, syntax, reference-decoder, probe, intra,
 conformance, inter, entropy, deblock, natural-corpus, rate-control,
 decoder-campaign, error-matrix, conformance-coverage, random-access seek, and
-native-to-WebAssembly equality gates, then formatting, lints, the forbidden-API
-and decoder-boundary scan, the full test suite, and the documentation build.
+native-to-WebAssembly equality, and projection-room gates, then formatting,
+lints, the forbidden-API and decoder-boundary scan, the full test suite, and the
+documentation build.
 
 ## Build and deploy
 
@@ -143,8 +159,8 @@ preflight green.
 
 ## License
 
-[MIT](LICENSE) © 2024-2025 Sidakpreet Singh
+[MIT](LICENSE) © 2024-2026 Sidakpreet Singh
 
 ---
 
-**Version:** v0.12.4
+**Version:** v0.12.5

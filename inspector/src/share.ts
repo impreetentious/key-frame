@@ -11,7 +11,10 @@
 
 import { NO_OVERLAYS, OVERLAY_NAMES, type HeatmapBasis, type Overlays } from "./render";
 
+export type Tab = "projection" | "cutting";
+
 export interface ViewState {
+  tab: Tab;
   frame: number;
   overlays: Overlays;
   basis: HeatmapBasis;
@@ -20,6 +23,7 @@ export interface ViewState {
 }
 
 export const DEFAULT_VIEW: ViewState = {
+  tab: "projection",
   frame: 0,
   overlays: { ...NO_OVERLAYS, partition: true },
   basis: "modeled",
@@ -45,17 +49,22 @@ function decodeOverlays(value: string): Overlays {
 export function encodeView(view: ViewState): string {
   const parts = [`f=${view.frame}`, `o=${encodeOverlays(view.overlays)}`, `h=${view.basis}`];
   if (view.selection) parts.push(`b=${view.selection[0]},${view.selection[1]}`);
+  if (view.tab !== DEFAULT_VIEW.tab) parts.push(`t=${view.tab}`);
   return parts.join("&");
 }
 
 export function decodeView(fragment: string): ViewState {
   const parameters = new URLSearchParams(fragment.replace(/^#/, ""));
   const view: ViewState = {
+    tab: DEFAULT_VIEW.tab,
     frame: DEFAULT_VIEW.frame,
     overlays: { ...DEFAULT_VIEW.overlays },
     basis: DEFAULT_VIEW.basis,
     selection: null,
   };
+
+  const tab = parameters.get("t");
+  if (tab === "projection" || tab === "cutting") view.tab = tab;
 
   const frame = Number.parseInt(parameters.get("f") ?? "", 10);
   if (Number.isInteger(frame) && frame >= 0) view.frame = frame;

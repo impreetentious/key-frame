@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Decoder, type DecodedFrame, type StreamInfo } from "./decoder";
 import { BlockPanel } from "./BlockPanel";
+import { CuttingRoom } from "./CuttingRoom";
 import { type CodingBlock, type FrameReport, blockAt, parseReport } from "./probe";
 import {
   OVERLAY_LABELS,
@@ -41,10 +42,14 @@ export function App() {
         setInfo(opened);
         setSource(label);
         setFrameError(null);
+        // The frame is clamped because a shared link may name one this stream
+        // does not have. The selection is left alone: clearing it here would
+        // throw away the block a shared link asked for, since opening the
+        // stream is the first thing that happens on load. Callers that mean to
+        // start fresh clear it themselves.
         setView((current) => ({
           ...current,
           frame: Math.min(current.frame, opened.frameCount - 1),
-          selection: null,
         }));
       } catch (error) {
         setInfo(null);
@@ -141,8 +146,27 @@ export function App() {
     const file = event.target.files?.[0];
     if (!file || !decoder) return;
     const bytes = new Uint8Array(await file.arrayBuffer());
+    setView((current) => ({ ...current, frame: 0, selection: null }));
     openStream(decoder, bytes, file.name);
   };
+
+  /// Opens a pinned regression stream from the catalogue and switches back to
+  /// the picture, so a finding can be looked at rather than only read about.
+  const onOpenStream = useCallback(
+    async (url: string, label: string) => {
+      if (!decoder) return;
+      try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`${label} did not load (${response.status})`);
+        openStream(decoder, new Uint8Array(await response.arrayBuffer()), label);
+        setView((current) => ({ ...current, tab: "projection", frame: 0, selection: null }));
+      } catch (error) {
+        setFrameError(error instanceof Error ? error.message : String(error));
+        setView((current) => ({ ...current, tab: "projection" }));
+      }
+    },
+    [decoder, openStream],
+  );
 
   if (status.phase === "loading") {
     return <main className="shell">Loading the decoder…</main>;
@@ -168,7 +192,28 @@ export function App() {
         </p>
       </header>
 
-      <section className="stage">
+      <nav className="tabs" aria-label="Sections">
+        {(
+          [
+            ["projection", "Projection room"],
+            ["cutting", "Cutting room"],
+          ] as const
+        ).map(([tab, label]) => (
+          <button
+            key={tab}
+            type="button"
+            className={view.tab === tab ? "tab current" : "tab"}
+            aria-current={view.tab === tab ? "page" : undefined}
+            onClick={() => setView((current) => ({ ...current, tab }))}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+
+      {view.tab === "cutting" ? <CuttingRoom onOpenStream={onOpenStream} /> : null}
+
+      <section className="stage" hidden={view.tab !== "projection"}>
         <div className="viewport" style={{ width: (info?.width ?? 0) * scale }}>
           <canvas
             ref={pictureRef}
@@ -190,15 +235,15 @@ export function App() {
         </aside>
       </section>
 
-      {frameError ? (
+      {frameError && view.tab === "projection" ? (
         <p className="error" role="alert">
           {frameError}
         </p>
       ) : null}
 
-      <Scrubber info={info} view={view} setView={setView} />
+      {view.tab === "projection" ? <Scrubber info={info} view={view} setView={setView} /> : null}
 
-      <footer className="tools">
+      <footer className="tools" hidden={view.tab !== "projection"}>
         <label className="file">
           Open a stream
           <input type="file" accept=".kfv" onChange={onPickFile} />
