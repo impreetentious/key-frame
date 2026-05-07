@@ -1,7 +1,7 @@
 {
   "name": "key-frame-projection-room",
   "private": true,
-  "version": "0.12.5",
+  "version": "0.12.6",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,7 +11,7 @@
     "smoke": "playwright test"
   },
   "devDependencies": {
-    "@playwright/test": "^1.54.1",
+    "@playwright/test": "^1.59.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.0",
