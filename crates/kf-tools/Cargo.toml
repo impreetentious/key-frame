@@ -16,5 +16,15 @@ kf-probe = { path = "../kf-probe" }
 kf-range = { path = "../kf-range" }
 kf-ref = { path = "../kf-ref" }
 
-[lints]
-workspace = true
+# This crate does not inherit the workspace lint table. Quality metrics are
+# floating point by definition — PSNR is a logarithm and SSIM is a ratio of
+# moments — and the workspace denies floats so that they cannot reach a decoded
+# pixel. The tools are outside that perimeter by design, which is what the
+# workspace table's own note describes; `scripts/ci/forbidden-grep.sh` keeps the
+# perimeter honest by scanning every crate except this one and its peers.
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+disallowed_types = "allow"

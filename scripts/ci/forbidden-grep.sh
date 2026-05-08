@@ -111,19 +111,22 @@ if [[ -d crates/kf-ref ]]; then
   fi
 fi
 
-# The specification oracle must be independently runnable. If it ever imports
-# this workspace's output, a generator and its consumer can share a wrong
-# formula and agree perfectly.
-if [[ -f spec/oracle.py ]]; then
-  leaks="$(grep -nE '^[[:space:]]*(import|from)[[:space:]]+[A-Za-z_]' spec/oracle.py 2>/dev/null \
+# Both oracles must be independently runnable. If either ever imports this
+# workspace's output, a generator and its consumer can share a wrong formula
+# and agree perfectly. The bitstream oracle authors syntax vectors; the metric
+# oracle authors the SSIM and BD-rate vectors, and the same argument applies to
+# a published number as to a decoded pixel.
+for oracle in spec/oracle.py bench/metric_oracle.py; do
+  [[ -f "$oracle" ]] || continue
+  leaks="$(grep -nE '^[[:space:]]*(import|from)[[:space:]]+[A-Za-z_]' "$oracle" 2>/dev/null \
     | grep -vE '[[:space:]](argparse|dataclasses|hashlib|itertools|json|math|os|pathlib|re|struct|sys|typing)([[:space:].]|$)' \
     || true)"
   if [[ -n "$leaks" ]]; then
-    echo "note: spec/oracle.py imports beyond the standard-library allowlist"
+    echo "note: $oracle imports beyond the standard-library allowlist"
     echo "$leaks" | sed 's/^/  /'
     status=1
   fi
-fi
+done
 
 if [[ $status -ne 0 ]]; then
   echo "forbidden-grep: FAILED"
