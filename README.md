@@ -38,6 +38,11 @@ specification. Every gate in the repository exists to prove the two agree.
 - Ships `kfenc`, `kfdec`, and `kfprobe`: encode, decode, and turn any stream
   into schema-validated per-block JSON with byte accounting that reconciles
   against a canonical replay of the payload.
+- Measures quality with `kfmetric`, whose PSNR, SSIM, and BD-rate definitions
+  are pinned to the last constant and checked against a second implementation
+  written independently of the first. Every report names its inputs by content
+  hash, and `kfmetric repro` recomputes the whole thing and fails if any figure
+  has moved.
 - Derives its normative document, its numeric tables, and its test vectors from
   the same literal frozen assets, so the specification and the implementation
   cannot drift apart silently.
@@ -117,6 +122,15 @@ cargo run --release -p kf-tools --bin kfdec -- \
   output.kfv --output decoded.y4m
 cargo run --release -p kf-tools --bin kfprobe -- output.kfv
 # or: --frame N to report a later frame
+cargo run --release -p kf-tools --bin kfmetric -- psnr input.y4m decoded.y4m
+```
+
+Without an input to hand, generate one. Every clip is a pure function of its
+arguments, so the same command produces the same bytes anywhere:
+
+```sh
+cargo run --release -p kf-tools --example make_clip -- \
+  --output input.y4m --width 176 --height 144 --frames 32 --pattern motion
 ```
 
 Build the projection room and open `inspector/dist` with any static server:
@@ -136,10 +150,10 @@ One command runs every gate, in the order continuous integration runs them:
 It checks version, documentation, license, and specification coherence, then the
 range-coder, transform, bitstream, syntax, reference-decoder, probe, intra,
 conformance, inter, entropy, deblock, natural-corpus, rate-control,
-decoder-campaign, error-matrix, conformance-coverage, random-access seek, and
-native-to-WebAssembly equality, and projection-room gates, then formatting,
-lints, the forbidden-API and decoder-boundary scan, the full test suite, and the
-documentation build.
+quality-metric, decoder-campaign, error-matrix, conformance-coverage,
+random-access seek, native-to-WebAssembly equality, and projection-room gates,
+then formatting, lints, the forbidden-API and decoder-boundary scan, the full
+test suite, and the documentation build.
 
 ## Build and deploy
 
@@ -163,4 +177,4 @@ preflight green.
 
 ---
 
-**Version:** v0.12.7
+**Version:** v0.12.8
