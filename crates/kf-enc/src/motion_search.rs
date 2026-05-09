@@ -28,6 +28,7 @@ pub(crate) fn estimate_motion(
     y: u32,
     size: u32,
     predictor: MotionVector,
+    subpel: bool,
 ) -> Result<MotionSearchResult, EncodeError> {
     let mut best = evaluate(source, reference, x, y, size, MotionVector::default())?;
     let center = MotionVector {
@@ -55,7 +56,14 @@ pub(crate) fn estimate_motion(
         diamond_center = ring_best;
     }
 
+    // The refinement rings are halves of a pixel and then quarters. Skipping
+    // them leaves the result on an integer position, which is exactly the
+    // comparison the subpel ablation wants; it is not a cheaper search for the
+    // same answer.
     for step in [2, 1] {
+        if !subpel {
+            break;
+        }
         let ring_center = best.motion_vector;
         for (delta_x, delta_y) in SUBPEL {
             let candidate = MotionVector {
@@ -165,6 +173,7 @@ mod tests {
             16,
             8,
             MotionVector { x_q4: 8, y_q4: -8 },
+            true,
         )
         .unwrap();
         assert_eq!(result.motion_vector, MotionVector { x_q4: 12, y_q4: -8 });
@@ -198,6 +207,7 @@ mod tests {
             24,
             8,
             MotionVector { x_q4: 7, y_q4: -5 },
+            true,
         )
         .unwrap();
         assert_eq!(result.motion_vector, MotionVector { x_q4: 5, y_q4: -3 });
@@ -217,6 +227,7 @@ mod tests {
                 x_q4: 40,
                 y_q4: -28,
             },
+            true,
         )
         .unwrap();
         assert_eq!(result.motion_vector, MotionVector::default());

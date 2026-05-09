@@ -15,7 +15,7 @@ use kf_transform::{
 };
 
 use crate::motion_search::estimate_motion;
-use crate::{EncodeError, FrameDecision, GopPlanner, RateControl, RateController};
+use crate::{EncodeError, FrameDecision, GopPlanner, RateControl, RateController, Toolset};
 
 /// Canonical replay accounting for one encoded coding block.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -66,6 +66,7 @@ pub struct EncodedStream {
 pub struct Encoder {
     sequence: SequenceHeader,
     rate: RateControl,
+    toolset: Toolset,
 }
 
 impl Encoder {
@@ -74,6 +75,7 @@ impl Encoder {
         Ok(Self {
             sequence,
             rate: RateControl::constant_qp(qp)?,
+            toolset: Toolset::full(),
         })
     }
 
@@ -82,6 +84,7 @@ impl Encoder {
         Ok(Self {
             sequence,
             rate: RateControl::abr(bitrate_bps, sequence.fps_num, sequence.fps_den)?,
+            toolset: Toolset::full(),
         })
     }
 
@@ -89,6 +92,25 @@ impl Encoder {
     #[must_use]
     pub const fn rate(&self) -> RateControl {
         self.rate
+    }
+
+    /// Restricts which tools the search may use.
+    ///
+    /// Consumed by the ablation campaign and by nothing else: every gate, every
+    /// conformance stream, and every headline number uses the full toolset that
+    /// the constructors install. A narrowed toolset still produces an ordinary
+    /// stream — the switches change what the encoder is willing to choose, not
+    /// what any of it means to a decoder.
+    #[must_use]
+    pub const fn with_toolset(mut self, toolset: Toolset) -> Self {
+        self.toolset = toolset;
+        self
+    }
+
+    /// Tools this encoder is allowed to use.
+    #[must_use]
+    pub const fn toolset(&self) -> Toolset {
+        self.toolset
     }
 
     /// Encodes the canonical deterministic IPPP stream with authoritative key
@@ -158,6 +180,7 @@ impl Encoder {
                 decision,
                 contexts,
                 references,
+                self.toolset,
             )?;
             contexts = encoded.contexts;
             reconstructed_frames.push(
@@ -287,6 +310,11 @@ impl IntraEncoder {
                     FrameType::Key,
                     None,
                     &motion_field,
+                    // The intra-only encoder is a fixed configuration, not a
+                    // tunable one: it exists so that the key-frame path can be
+                    // exercised on its own, and narrowing it further would make
+                    // it a different thing.
+                    Toolset::full(),
                 )?;
                 let structure_before = writer.stats().clone();
                 writer.write_partition(&choice.tree)?;
@@ -394,6 +422,7 @@ fn encode_video_frame(
     decision: FrameDecision,
     contexts: ContextBank,
     references: Option<ReferenceFrames<'_>>,
+    toolset: Toolset,
 ) -> Result<EncodedVideoFrame, EncodeError> {
     if frame_type == FrameType::P && references.is_none() {
         return Err(reconstruction("reference.missing"));
@@ -424,6 +453,7 @@ fn encode_video_frame(
                 frame_type,
                 references,
                 &motion_field,
+                toolset,
             )?;
             let structure_before = writer.stats().clone();
             writer.write_partition(&choice.tree)?;
@@ -590,6 +620,7 @@ fn select_partition(
     frame_type: FrameType,
     references: Option<ReferenceFrames<'_>>,
     motion_field: &MotionField,
+    toolset: Toolset,
 ) -> Result<PartitionChoice, EncodeError> {
     let (leaf_contexts, leaf_structure_cost) = partition_transition(contexts.clone(), size, false)?;
     let leaf_writer = SyntaxWriter::new(leaf_contexts.clone());
@@ -604,6 +635,7 @@ fn select_partition(
         frame_type,
         references,
         motion_field,
+        toolset,
     )?;
     let (leaf_contexts, leaf_modeled_cost) =
         candidate_transition(leaf_contexts, &leaf, frame_type)?;
@@ -617,7 +649,9 @@ fn select_partition(
         blocks: vec![leaf],
     };
 
-    if let Ok(child_size) = size.child() {
+    if let Ok(child_size) = size.child()
+        && toolset.split
+    {
         let (mut split_contexts, split_structure_cost) =
             partition_transition(contexts, size, true)?;
         let mut split_reconstruction = reconstructed.clone();
@@ -640,6 +674,7 @@ fn select_partition(
                 frame_type,
                 references,
                 &split_motion_field,
+                toolset,
             )?;
             split_contexts = child.contexts;
             split_reconstruction = child.reconstructed;
@@ -711,15 +746,24 @@ fn select_prediction(
     frame_type: FrameType,
     references: Option<ReferenceFrames<'_>>,
     motion_field: &MotionField,
+    toolset: Toolset,
 ) -> Result<Candidate, EncodeError> {
     let lambda = u64::from(lambda_q8(qp).map_err(|_| reconstruction("rdo.lambda"))?);
     let mut best: Option<(u128, Candidate)> = None;
-    if frame_type == FrameType::P {
-        let references = references.ok_or_else(|| reconstruction("reference.missing"))?;
-        for reference in [
+    // The reference list is narrowed once, here, so that skip and non-skip
+    // agree about which references exist. Filtering them separately is how an
+    // ablation ends up measuring two different things at once.
+    let allowed: &[kf_bitstream::ReferenceFrame] = if toolset.golden {
+        &[
             kf_bitstream::ReferenceFrame::Last,
             kf_bitstream::ReferenceFrame::Golden,
-        ] {
+        ]
+    } else {
+        &[kf_bitstream::ReferenceFrame::Last]
+    };
+    if frame_type == FrameType::P && toolset.inter {
+        let references = references.ok_or_else(|| reconstruction("reference.missing"))?;
+        for &reference in allowed.iter().filter(|_| toolset.skip) {
             let predictor = motion_field
                 .predictor(x, y, u32::from(size.side()), reference_slot(reference))
                 .map_err(|_| reconstruction("motion.predictor"))?;
@@ -747,10 +791,7 @@ fn select_prediction(
             )?;
             consider_candidate(writer, frame_type, candidate, lambda, &mut best)?;
         }
-        for reference in [
-            kf_bitstream::ReferenceFrame::Last,
-            kf_bitstream::ReferenceFrame::Golden,
-        ] {
+        for &reference in allowed {
             let predictor = motion_field
                 .predictor(x, y, u32::from(size.side()), reference_slot(reference))
                 .map_err(|_| reconstruction("motion.predictor"))?;
@@ -761,6 +802,7 @@ fn select_prediction(
                 y,
                 u32::from(size.side()),
                 predictor,
+                toolset.subpel,
             )?;
             let mvd = kf_bitstream::MotionVector {
                 x_q4: i16::try_from(search.motion_vector.x_q4.saturating_sub(predictor.x_q4))

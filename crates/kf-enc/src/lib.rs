@@ -7,6 +7,7 @@ mod error;
 mod gop;
 mod motion_search;
 mod rate;
+mod toolset;
 
 pub use encoder::{
     BlockAccounting, EncodedStream, Encoder, FrameAccounting, IntraEncoder, SuperblockAccounting,
@@ -14,3 +15,4 @@ pub use encoder::{
 pub use error::EncodeError;
 pub use gop::{FrameDecision, GopPlanner};
 pub use rate::{RateControl, RateController};
+pub use toolset::Toolset;

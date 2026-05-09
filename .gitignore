@@ -33,6 +33,7 @@ inspector/dist/
 inspector/public/kf_wasm.wasm
 inspector/public/sample.kfv
 inspector/public/cutting-room.json
+inspector/public/rd-campaign.json
 inspector/public/regressions/
 inspector/test-results/
 inspector/playwright-report/
