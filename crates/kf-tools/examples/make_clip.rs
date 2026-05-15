@@ -178,13 +178,38 @@ fn ramp(x: u32, y: u32) -> u8 {
 /// not that the picture changed.
 fn texture(width: u32, height: u32, seed: u64) -> Vec<u8> {
     let mut generator = seeded(seed);
-    let span = (width + 64) * (height + 64);
+    let stride = width + 64;
+    let rows = height + 64;
+    let span = stride * rows;
     let mut field = Vec::with_capacity(span as usize);
     for _ in 0..span {
-        // Blend towards mid grey so the field has structure at block scale
-        // rather than being uncompressible white noise.
         let sample = ((generator.next_u64() >> 40) & 0xFF) as u32;
         field.push(((sample + 128) / 2) as u8);
+    }
+
+    // Two box-blur passes over the noise.
+    //
+    // White noise is the wrong test content for a codec demo in both
+    // directions: it is close to incompressible, so the numbers look bad for a
+    // reason that has nothing to do with the codec, and it has no structure
+    // below the sample, so sub-pixel motion has nothing to interpolate towards
+    // and the quadtree has no edge to follow. Blurring gives the field
+    // low-frequency content — which is what real pictures are mostly made of —
+    // while leaving it deterministic.
+    for _ in 0..2 {
+        let source = field.clone();
+        for y in 1..rows - 1 {
+            for x in 1..stride - 1 {
+                let mut total = 0_u32;
+                for dy in 0..3_u32 {
+                    for dx in 0..3_u32 {
+                        let index = (y + dy - 1) * stride + (x + dx - 1);
+                        total += u32::from(source[index as usize]);
+                    }
+                }
+                field[(y * stride + x) as usize] = (total / 9) as u8;
+            }
+        }
     }
     field
 }

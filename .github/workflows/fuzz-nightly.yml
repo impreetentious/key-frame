@@ -13,6 +13,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 360
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: actions-rust-lang/setup-rust-toolchain@fb51252c7ba57d633bc668f941da052e410add48 # v1.13.0
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions-rust-lang/setup-rust-toolchain@2b1f5e9b395427c92ee4e3331786ca3c37afe2d7 # v1.16.0
       - run: cargo run --release --locked -p kf-fuzz --bin kf-fuzz-campaign -- --iterations 20000000
+
+  # The published rate-distortion numbers, re-derived in full. The gate that
+  # runs on every change re-encodes the ends of each quality ladder because a
+  # slow gate gets skipped; this one has the time to check all sixty points, so
+  # nothing in the receipt goes unrechecked for longer than a day.
+  receipts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions-rust-lang/setup-rust-toolchain@2b1f5e9b395427c92ee4e3331786ca3c37afe2d7 # v1.16.0
+      - run: ./scripts/fetch-corpus.sh
+      - run: cargo run --release --locked -p kf-tools --example rd_verify -- --receipts bench/results/rd-campaign.json
