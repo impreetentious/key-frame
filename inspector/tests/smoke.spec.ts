@@ -133,3 +133,68 @@ test("the cutting room lists findings and opens their streams", async ({ page })
   await expect(page.getByText(/^regression /)).toBeVisible();
   await expect(page.getByRole("slider")).toBeVisible();
 });
+
+test("the rate–distortion tab draws real curves and names its ablations", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Rate and distortion" }).click();
+
+  // The caveat is not decoration. A page that showed rate-distortion curves
+  // without it would be inviting exactly the comparison the repository refuses
+  // to make, so its absence is a failure.
+  await expect(page.getByText(/Orientation, not a race/)).toBeVisible();
+
+  // A canvas with nothing drawn on it is the failure mode a screenshot would
+  // miss, so the pixels are checked rather than the element.
+  const drawn = await page.evaluate(() => {
+    const canvas = document.querySelector<HTMLCanvasElement>(".chart canvas");
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context) return false;
+    const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
+    for (let index = 3; index < data.length; index += 4) {
+      if (data[index] !== 0) return true;
+    }
+    return false;
+  });
+  expect(drawn).toBe(true);
+
+  // Every ablation has to reach the table with a figure or a named refusal,
+  // never a blank cell.
+  const table = page.locator("table.ablations").first();
+  for (const toolset of ["no-golden", "no-skip", "no-inter", "no-subpel", "no-split"]) {
+    await expect(table.getByRole("rowheader", { name: toolset })).toBeVisible();
+  }
+  const figures = await table.locator("tbody td:first-of-type").allInnerTexts();
+  expect(figures).toHaveLength(5);
+  for (const figure of figures) expect(figure.trim()).not.toBe("");
+
+  // Switching the metric has to redraw rather than leave the previous chart up.
+  // The radio is addressed by role because the charts carry the metric in their
+  // own accessible names, and a label lookup would match three things.
+  const ssim = page.getByRole("radio", { name: "SSIM-Y" });
+  await ssim.check();
+  await expect(ssim).toBeChecked();
+  await expect(
+    page.getByRole("img", { name: /Rate against SSIM-Y/ }).first(),
+  ).toBeVisible();
+
+  // The tab travels in a shared link like every other piece of view state.
+  await expect(page).toHaveURL(/#.*t=curves/);
+
+  // Narrowing the window has to redraw the plot at the new width. A canvas that
+  // kept its old backing store would show a stretched copy of the chart, which
+  // is the failure mode a fixed-size screenshot never catches.
+  const widthOf = () =>
+    page.evaluate(() => {
+      const canvas = document.querySelector<HTMLCanvasElement>(".chart canvas");
+      return canvas ? { backing: canvas.width, laid: Math.round(canvas.getBoundingClientRect().width) } : null;
+    });
+  const before = await widthOf();
+  await page.setViewportSize({ width: 720, height: 900 });
+  await expect.poll(async () => (await widthOf())?.laid).not.toBe(before?.laid);
+  const after = await widthOf();
+  expect(after).not.toBeNull();
+  // The backing store tracks the laid-out width times the device pixel ratio,
+  // so the two stay in proportion however the page is resized.
+  const ratio = await page.evaluate(() => window.devicePixelRatio || 1);
+  expect(after!.backing).toBe(Math.round(after!.laid * ratio));
+});

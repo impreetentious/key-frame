@@ -24,6 +24,15 @@ mkdir -p inspector/public
 cp target/wasm32-unknown-unknown/release/kf_wasm.wasm inspector/public/kf_wasm.wasm
 cp "$sample" inspector/public/sample.kfv
 
+# The measurement receipts the rate-distortion tab draws. Copied rather than
+# recomputed: the page must show the numbers the verifier checks, and a page
+# that measured its own would be free to disagree with them.
+if [[ ! -f bench/results/rd-campaign.json ]]; then
+  echo "build-inspector: bench/results/rd-campaign.json is missing; run the campaign first" >&2
+  exit 1
+fi
+cp bench/results/rd-campaign.json inspector/public/rd-campaign.json
+
 # The catalogue and its pinned streams. This refuses outright if an entry names
 # a regression stream that is not there, so the site cannot ship a finding
 # nobody can reproduce.

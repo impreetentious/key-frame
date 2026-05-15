@@ -379,3 +379,133 @@ button:hover {
   background: none;
   padding: 0;
 }
+
+/* The rate–distortion tab.
+ *
+ * The chart is a canvas, so everything below is the frame around it: the
+ * legend, the ablation table, and the caveat box that keeps the comparison
+ * honest. The canvas sizes itself from `clientWidth`, which is why it is given
+ * a width here and a height in script rather than the other way round. */
+
+.finding.open {
+  padding: 16px;
+}
+
+.finding.open h3 {
+  margin: 0 0 12px;
+  font-size: 1rem;
+}
+
+.quiet {
+  color: var(--ink-quiet);
+  font-weight: normal;
+}
+
+.caveat {
+  margin: 18px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--edge);
+  border-left: 3px solid var(--warn);
+  border-radius: 5px;
+  background: var(--panel);
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: var(--ink-quiet);
+}
+
+.caveat strong {
+  color: var(--ink);
+}
+
+/* Prose wants a measure of about 74 characters; a six-curve chart does not.
+ * The rate-distortion tab keeps its explanatory text narrow and lets the plots
+ * and the ablation table use the width they need. */
+.catalogue.wide {
+  max-width: 100ch;
+}
+
+.catalogue.wide .lede,
+.catalogue.wide .caveat,
+.catalogue.wide .disclaimer {
+  max-width: 74ch;
+}
+
+.chart canvas {
+  display: block;
+  width: 100%;
+  height: 320px;
+}
+
+.legend {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 8px 0 0;
+  padding: 0;
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+  color: var(--ink-quiet);
+}
+
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin-right: 6px;
+  vertical-align: baseline;
+}
+
+.ablations {
+  width: 100%;
+  margin-top: 18px;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.ablations caption {
+  text-align: left;
+  color: var(--ink-quiet);
+  line-height: 1.55;
+  padding-bottom: 10px;
+}
+
+.ablations th,
+.ablations td {
+  text-align: left;
+  padding: 7px 10px 7px 0;
+  border-bottom: 1px solid var(--edge);
+  vertical-align: top;
+}
+
+.ablations thead th {
+  color: var(--ink-quiet);
+  font-weight: normal;
+}
+
+.ablations tbody th {
+  font-family: ui-monospace, monospace;
+  font-weight: normal;
+  white-space: nowrap;
+}
+
+.ablations td.percent,
+.ablations td:nth-child(2) {
+  font-family: ui-monospace, monospace;
+  color: var(--warn);
+  white-space: nowrap;
+}
+
+/* A negative figure means the ablation spent fewer bits, which happens when the
+ * tool it removed was buying quality rather than saving rate. It is a real
+ * result, so it is coloured differently rather than hidden. */
+.ablations td.negative {
+  color: var(--good);
+}

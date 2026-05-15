@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Decoder, type DecodedFrame, type StreamInfo } from "./decoder";
 import { BlockPanel } from "./BlockPanel";
 import { CuttingRoom } from "./CuttingRoom";
+import { Curves } from "./Curves";
 import { type CodingBlock, type FrameReport, blockAt, parseReport } from "./probe";
 import {
   OVERLAY_LABELS,
@@ -197,6 +198,7 @@ export function App() {
           [
             ["projection", "Projection room"],
             ["cutting", "Cutting room"],
+            ["curves", "Rate and distortion"],
           ] as const
         ).map(([tab, label]) => (
           <button
@@ -212,6 +214,7 @@ export function App() {
       </nav>
 
       {view.tab === "cutting" ? <CuttingRoom onOpenStream={onOpenStream} /> : null}
+      {view.tab === "curves" ? <Curves /> : null}
 
       <section className="stage" hidden={view.tab !== "projection"}>
         <div className="viewport" style={{ width: (info?.width ?? 0) * scale }}>

@@ -11,7 +11,7 @@
 
 import { NO_OVERLAYS, OVERLAY_NAMES, type HeatmapBasis, type Overlays } from "./render";
 
-export type Tab = "projection" | "cutting";
+export type Tab = "projection" | "cutting" | "curves";
 
 export interface ViewState {
   tab: Tab;
@@ -64,7 +64,7 @@ export function decodeView(fragment: string): ViewState {
   };
 
   const tab = parameters.get("t");
-  if (tab === "projection" || tab === "cutting") view.tab = tab;
+  if (tab === "projection" || tab === "cutting" || tab === "curves") view.tab = tab;
 
   const frame = Number.parseInt(parameters.get("f") ?? "", 10);
   if (Number.isInteger(frame) && frame >= 0) view.frame = frame;
