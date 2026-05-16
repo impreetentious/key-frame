@@ -1,13 +1,18 @@
 import { type CodingBlock, type FrameReport, modeledBits } from "./probe";
+import type { WorstBlock } from "./source";
 
 /// The syntax of one coding block, with both accounting figures side by side
 /// and neither of them called "the bits this block cost".
 export function BlockPanel({
   report,
   block,
+  worst,
 }: {
   report: FrameReport | null;
   block: CodingBlock | null;
+  /// Set when the visitor asked why a block looks bad and a source clip was
+  /// loaded to answer with. Shown only for the block it actually describes.
+  worst?: WorstBlock | null;
 }) {
   if (!report) return null;
   if (!block) {
@@ -46,6 +51,25 @@ export function BlockPanel({
         <dt>DC energy</dt>
         <dd>{block.dcEnergy}</dd>
       </dl>
+
+      {worst && worst.block.x === block.x && worst.block.y === block.y ? (
+        <>
+          <h3>Why this one</h3>
+          <dl>
+            <dt>Mean squared error</dt>
+            <dd title="Measured against the source clip you loaded, luma only. Not an estimate.">
+              {worst.meanSquaredError.toFixed(1)} per sample
+            </dd>
+            <dt>Error per modeled bit</dt>
+            <dd>{(worst.meanSquaredError / worst.bits).toFixed(2)}</dd>
+          </dl>
+          <p className="hint">
+            This is the block with the most error for the fewest bits in this frame — the one
+            the encoder decided was cheap and then got wrong. Ranking by error alone would just
+            point at whichever block has the most detail, which is not a finding.
+          </p>
+        </>
+      ) : null}
 
       {superblock ? (
         <>

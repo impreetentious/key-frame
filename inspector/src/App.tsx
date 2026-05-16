@@ -13,6 +13,7 @@ import {
   frameToImageData,
 } from "./render";
 import { type ViewState, decodeView, writeView } from "./share";
+import { type SourceClip, type WorstBlock, parseY4m, worstBlock } from "./source";
 
 // Both are produced by `scripts/build-inspector.sh` into `public/`. The sample
 // is a real committed conformance stream, decoded live like any other: there is
@@ -32,6 +33,11 @@ export function App() {
   const [frame, setFrame] = useState<DecodedFrame | null>(null);
   const [report, setReport] = useState<FrameReport | null>(null);
   const [frameError, setFrameError] = useState<string | null>(null);
+  // The original pictures, if the visitor has supplied them. Without these the
+  // page can show what the decoder produced but not how wrong it is, and it
+  // says so rather than estimating.
+  const [sourceClip, setSourceClip] = useState<SourceClip | null>(null);
+  const [worst, setWorst] = useState<WorstBlock | null>(null);
 
   const pictureRef = useRef<HTMLCanvasElement | null>(null);
   const overlayRef = useRef<HTMLCanvasElement | null>(null);
@@ -148,11 +154,65 @@ export function App() {
     if (!file || !decoder) return;
     const bytes = new Uint8Array(await file.arrayBuffer());
     setView((current) => ({ ...current, frame: 0, selection: null }));
+    // A source loaded for the previous stream describes different pictures, so
+    // it is dropped rather than compared against the new one.
+    setSourceClip(null);
+    setWorst(null);
     openStream(decoder, bytes, file.name);
+  };
+
+  /// Loads the original clip a stream was encoded from.
+  ///
+  /// Refused unless it matches the stream in dimensions and frame count. A clip
+  /// that merely parses would produce an error map computed against the wrong
+  /// pictures, which is the one failure worse than not answering at all.
+  const onPickSource = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const clip = parseY4m(new Uint8Array(await file.arrayBuffer()));
+      if (!info) throw new Error("open a stream before its source");
+      if (clip.width !== info.width || clip.height !== info.height) {
+        throw new Error(
+          `the source is ${clip.width}x${clip.height} and the stream is ${info.width}x${info.height}`,
+        );
+      }
+      if (clip.frameCount < info.frameCount) {
+        throw new Error(
+          `the source has ${clip.frameCount} frames and the stream has ${info.frameCount}`,
+        );
+      }
+      setSourceClip(clip);
+      setFrameError(null);
+    } catch (error) {
+      setSourceClip(null);
+      setWorst(null);
+      setFrameError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  /// Selects the block that went worst: the most error for the fewest bits.
+  const onFindWorst = () => {
+    const plane = sourceClip?.luma[view.frame];
+    if (!plane || !report || !frame) return;
+    const found = worstBlock(report, frame, plane);
+    setWorst(found);
+    if (found) {
+      setView((current) => ({ ...current, selection: [found.block.x, found.block.y] }));
+    }
   };
 
   /// Opens a pinned regression stream from the catalogue and switches back to
   /// the picture, so a finding can be looked at rather than only read about.
+
+  /// Opens a pinned regression stream from the catalogue and switches back to
+  /// the picture, so a finding can be looked at rather than only read about.
+  // The worst block is a fact about one frame. Carrying it across a scrub would
+  // leave a figure on screen describing a picture nobody is looking at.
+  useEffect(() => {
+    setWorst(null);
+  }, [view.frame]);
+
   const onOpenStream = useCallback(
     async (url: string, label: string) => {
       if (!decoder) return;
@@ -234,7 +294,7 @@ export function App() {
         <aside className="side">
           <StreamFacts info={info} source={source} report={report} frame={frame} />
           <OverlayControls view={view} setView={setView} />
-          <BlockPanel report={report} block={selected} />
+          <BlockPanel report={report} block={selected} worst={worst} />
         </aside>
       </section>
 
@@ -251,6 +311,22 @@ export function App() {
           Open a stream
           <input type="file" accept=".kfv" onChange={onPickFile} />
         </label>
+        <label className="file">
+          {sourceClip ? "Source loaded" : "Load the source clip"}
+          <input type="file" accept=".y4m" onChange={onPickSource} />
+        </label>
+        <button
+          type="button"
+          onClick={onFindWorst}
+          disabled={!sourceClip || !report || !frame}
+          title={
+            sourceClip
+              ? "Select the block with the most error for the fewest bits"
+              : "Load the original Y4M this stream was encoded from. Without it the page cannot measure error, and it will not guess."
+          }
+        >
+          Why is this block ugly?
+        </button>
         <button
           type="button"
           onClick={() => {

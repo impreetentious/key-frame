@@ -189,12 +189,114 @@ test("the rate–distortion tab draws real curves and names its ablations", asyn
       return canvas ? { backing: canvas.width, laid: Math.round(canvas.getBoundingClientRect().width) } : null;
     });
   const before = await widthOf();
-  await page.setViewportSize({ width: 720, height: 900 });
-  await expect.poll(async () => (await widthOf())?.laid).not.toBe(before?.laid);
-  const after = await widthOf();
-  expect(after).not.toBeNull();
-  // The backing store tracks the laid-out width times the device pixel ratio,
-  // so the two stay in proportion however the page is resized.
   const ratio = await page.evaluate(() => window.devicePixelRatio || 1);
-  expect(after!.backing).toBe(Math.round(after!.laid * ratio));
+  await page.setViewportSize({ width: 720, height: 900 });
+
+  // Polled as one condition rather than two steps. The layout width changes as
+  // soon as the viewport does, but the backing store is only resized when the
+  // observer fires, so checking "the width changed" and then "the backing
+  // matches" reads the second one during the gap between them and fails on a
+  // canvas that was about to be correct.
+  await expect
+    .poll(async () => {
+      const size = await widthOf();
+      if (!size || size.laid === before?.laid) return "not resized yet";
+      return size.backing === Math.round(size.laid * ratio)
+        ? "redrawn"
+        : `backing ${size.backing} against ${size.laid} laid out at ratio ${ratio}`;
+    })
+    .toBe("redrawn");
 });
+
+test("the ugly-block action refuses to answer without a source clip", async ({ page }) => {
+  await page.goto("/");
+  // The page can show what the decoder produced. It cannot show how wrong that
+  // is without the original, and the plan for this feature is explicit that it
+  // must say so rather than estimate.
+  const button = page.getByRole("button", { name: "Why is this block ugly?" });
+  await expect(button).toBeDisabled();
+  await expect(button).toHaveAttribute("title", /cannot measure error, and it will not guess/);
+});
+
+test("with the source loaded, the ugly-block action names a block and its error", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.getByText("64×64")).toBeVisible();
+
+  // The source is built in the page rather than shipped. The size budget
+  // refuses any .y4m in the build for good reason — no decoded video may reach
+  // the page — so the test synthesises one instead of weakening that rule.
+  await attachSource(page, 64, 64, 3, (at, index) => (at * 7 + index * 31) % 256);
+  await expect(page.getByText("Source loaded")).toBeVisible();
+
+  const button = page.getByRole("button", { name: "Why is this block ugly?" });
+  await expect(button).toBeEnabled();
+  await button.click();
+
+  // A block is selected and the panel explains why that one, with a measured
+  // error rather than a score.
+  const panel = page.locator(".side .card").last();
+  await expect(panel.getByText("Why this one")).toBeVisible();
+  await expect(panel.getByText(/per sample$/)).toBeVisible();
+  await expect(panel.getByText(/most error for the fewest bits/)).toBeVisible();
+  await expect(page).toHaveURL(/#.*b=\d+,\d+/);
+});
+
+test("a source clip that does not match the stream is refused", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByText("64×64")).toBeVisible();
+
+  // Wrong dimensions. Accepting it would produce an error map computed against
+  // the wrong pictures, which looks plausible and means nothing.
+  await attachSource(page, 32, 32, 1, () => 64);
+  await expect(page.getByText(/the source is 32x32 and the stream is 64x64/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Why is this block ugly?" })).toBeDisabled();
+});
+
+/// Hands the page a synthetic Y4M through its own file input.
+///
+/// The clip is assembled inside the browser and delivered with a `DataTransfer`
+/// rather than through Playwright's file API, which would need Node's `Buffer`
+/// and therefore a types-only dependency this repository does not want. The
+/// page sees an ordinary file-picker change either way.
+async function attachSource(
+  page: import("@playwright/test").Page,
+  width: number,
+  height: number,
+  frames: number,
+  sample: (at: number, frame: number) => number,
+): Promise<void> {
+  await page.evaluate(
+    ({ width, height, frames, body }) => {
+      const value = new Function("at", "frame", `return (${body})(at, frame);`) as (
+        at: number,
+        frame: number,
+      ) => number;
+      const encoder = new TextEncoder();
+      const header = encoder.encode(`YUV4MPEG2 W${width} H${height} F24:1 Ip A1:1 C420jpeg\n`);
+      const marker = encoder.encode("FRAME\n");
+      const luma = width * height;
+      const chroma = Math.ceil(width / 2) * Math.ceil(height / 2);
+      const bytes = new Uint8Array(header.length + frames * (marker.length + luma + 2 * chroma));
+      bytes.set(header, 0);
+      let at = header.length;
+      for (let frame = 0; frame < frames; frame += 1) {
+        bytes.set(marker, at);
+        at += marker.length;
+        for (let index = 0; index < luma; index += 1) bytes[at + index] = value(index, frame) & 0xff;
+        at += luma;
+        bytes.fill(128, at, at + 2 * chroma);
+        at += 2 * chroma;
+      }
+
+      const input = document.querySelector<HTMLInputElement>('input[type="file"][accept=".y4m"]');
+      if (!input) throw new Error("the source input is not on the page");
+      const transfer = new DataTransfer();
+      transfer.items.add(new File([bytes], "source.y4m", { type: "application/octet-stream" }));
+      input.files = transfer.files;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    },
+    { width, height, frames, body: sample.toString() },
+  );
+}
