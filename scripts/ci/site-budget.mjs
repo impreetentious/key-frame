@@ -18,8 +18,20 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const dist = path.join(root, "inspector/dist");
 
-const SCRIPT_AND_STYLE_BUDGET = 300 * 1024;
-const MODULE_BUDGET = 1.5 * 1024 * 1024;
+// The budgets are declared in the frozen constants and read from there rather
+// than written twice. A number that lives in two files is a number that will
+// eventually disagree with itself, and the generated documentation publishes
+// these — so a budget quietly raised here would leave the document promising a
+// smaller page than the gate enforces.
+function declaredConstant(name) {
+  const source = readFileSync(path.join(root, "spec/v1/constants.toml"), "utf8");
+  const match = source.match(new RegExp(`^${name}\\s*=\\s*(\\d+)\\s*$`, "m"));
+  if (!match) throw new Error(`spec/v1/constants.toml declares no ${name}`);
+  return Number.parseInt(match[1], 10);
+}
+
+const SCRIPT_AND_STYLE_BUDGET = declaredConstant("inspector_js_css_gzip_bytes");
+const MODULE_BUDGET = declaredConstant("inspector_wasm_gzip_bytes");
 
 const failures = [];
 

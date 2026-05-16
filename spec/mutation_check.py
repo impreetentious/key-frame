@@ -87,7 +87,17 @@ def flip_oracle_payload(text):
     return json.dumps(document, indent=2) + "\n"
 
 
+# Two halves of the same protection, and it is worth being precise about which
+# half lives here. This harness mutates a copied specification tree and runs the
+# Python gates over it, so it proves that a changed *asset* is rejected. It
+# cannot prove the reverse — that the Rust still enforces what the asset says —
+# because it never builds the Rust. That direction is covered by the
+# `normative_limits` tests in `kf-bitstream`, `kf-range`, and `kf-fuzz`, which
+# drive the real constructors with the declared values and require them to
+# accept exactly what the document promises.
 CASES = [
+    Case("constants.toml", "the largest declared picture width", bump_scalar("max_width"), False),
+    Case("constants.toml", "the declared probability clamp", bump_scalar("probability_max"), False),
     Case("transforms.toml", "one transform scale constant", bump_scalar("dc_scale"), True),
     Case("quant.toml", "one quantizer scale entry", bump_first_in_array("qscale"), True),
     Case("costs.toml", "one modeled-entropy cost entry", bump_first_in_array("cost0_q16"), True),

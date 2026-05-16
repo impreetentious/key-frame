@@ -16,5 +16,12 @@ kf-dec = { path = "../kf-dec" }
 kf-frame = { path = "../kf-frame" }
 kf-ref = { path = "../kf-ref" }
 
+# Only the campaign budget is read from here, and only in a test. The frozen
+# constants declare the nightly iteration count and the generated documentation
+# publishes it, so the number this crate compiles in has to be checked against
+# the one the specification promises.
+[dev-dependencies]
+kf-spec = { path = "../kf-spec" }
+
 [lints]
 workspace = true

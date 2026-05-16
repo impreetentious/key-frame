@@ -394,10 +394,17 @@ impl Parser<'_> {
             .bytes
             .get(self.at..self.at + 4)
             .ok_or_else(|| self.error("a \\u escape needs four hex digits"))?;
-        let text =
-            core::str::from_utf8(slice).map_err(|_| self.error("a \\u escape is not hex"))?;
-        let value =
-            u32::from_str_radix(text, 16).map_err(|_| self.error("a \\u escape is not hex"))?;
+        // Each byte is checked directly rather than handed to `from_str_radix`,
+        // which accepts a leading `+` and would read `\u+123` as U+0123. This
+        // reader exists to reject receipts that are not what they claim to be,
+        // so it may not be the more permissive of the two.
+        let mut value = 0_u32;
+        for &byte in slice {
+            let digit = (byte as char)
+                .to_digit(16)
+                .ok_or_else(|| self.error("a \\u escape is not four hex digits"))?;
+            value = (value << 4) | digit;
+        }
         self.at += 4;
         Ok(value)
     }
@@ -557,6 +564,15 @@ mod tests {
             (r#""unterminated"#, "ends inside a string"),
             (r#""\q""#, "is not an escape"),
             (r#""\ud83d""#, "no low surrogate"),
+            // A `\u` escape is four hex digits and nothing else. The sign forms
+            // are here because the obvious implementation of this parse accepts
+            // them: `from_str_radix` reads `+123` as 0x123, so `\u+123` would
+            // decode to a character instead of being refused.
+            (r#""\u+123""#, "four hex digits"),
+            (r#""\u-123""#, "four hex digits"),
+            (r#""\u 123""#, "four hex digits"),
+            (r#""\u12g4""#, "four hex digits"),
+            (r#""\u12""#, "four hex digits"),
             (r#"{} {}"#, "trailing content"),
             (r#"1e999"#, "out of range"),
         ] {

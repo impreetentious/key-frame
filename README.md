@@ -116,6 +116,9 @@ Node.js for repository checks
   generated from the frozen specification assets.
 - [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md) names every known weakness, why
   the design accepts it, and what lifting it would take.
+- [`docs/claims.md`](docs/claims.md) maps every claim on this page to the check
+  that would fail if it stopped being true — and a gate refuses to pass if a row
+  names something that no longer exists.
 - [`docs/adr/`](docs/adr/) records every architectural decision, the alternatives
   weighed, and the consequences accepted.
 - [`docs/writeups/`](docs/writeups/) is six pieces on why the codec is shaped the
@@ -184,9 +187,9 @@ One command runs every gate, in the order continuous integration runs them:
 ./scripts/preflight.sh
 ```
 
-It checks version, documentation, license, and specification coherence, then the
-range-coder, transform, bitstream, syntax, reference-decoder, probe, intra,
-conformance, inter, entropy, deblock, natural-corpus, rate-control,
+It checks version, documentation, claim, license, and specification coherence,
+then the range-coder, transform, bitstream, syntax, reference-decoder, probe,
+intra, conformance, inter, entropy, deblock, natural-corpus, rate-control,
 quality-metric, decoder-campaign, error-matrix, conformance-coverage,
 random-access seek, native-to-WebAssembly equality, and projection-room gates,
 then formatting, lints, the forbidden-API and decoder-boundary scan, the full
@@ -214,4 +217,4 @@ preflight green.
 
 ---
 
-**Version:** v0.13.1
+**Version:** v0.13.2
