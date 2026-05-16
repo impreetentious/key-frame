@@ -48,17 +48,55 @@ fn subpel_steps() -> &'static [i32] {
     })
 }
 
-const DIAMOND: [(i32, i32); 4] = [(0, -1), (-1, 0), (1, 0), (0, 1)];
-const SUBPEL: [(i32, i32); 8] = [
-    (0, -1),
-    (-1, -1),
-    (-1, 0),
-    (-1, 1),
-    (0, 1),
-    (1, 1),
-    (1, 0),
-    (1, -1),
-];
+/// The full-pixel and sub-pixel candidate offsets the search visits, in the
+/// declared order.
+///
+/// Order is not cosmetic here: the declared tie-break is "zero then search
+/// order", so two candidates of equal cost are separated by which one this list
+/// reaches first. A reordered copy would silently pick different blocks.
+fn pattern(key: &str) -> &'static [(i32, i32)] {
+    fn parse(key: &str) -> Vec<(i32, i32)> {
+        let contents = V1_ASSETS
+            .iter()
+            .find(|asset| asset.name == "search.toml")
+            .expect("invariant: kf-spec exposes search.toml")
+            .contents;
+        let prefix = format!("{key} = [");
+        let body = contents
+            .lines()
+            .find_map(|line| line.strip_prefix(&prefix))
+            .and_then(|line| line.strip_suffix("]"))
+            .expect("invariant: checked search asset lists every candidate pattern");
+        let mut offsets = Vec::new();
+        for pair in body.split("],") {
+            let pair = pair.trim().trim_start_matches('[').trim_end_matches(']');
+            if pair.is_empty() {
+                continue;
+            }
+            let (x, y) = pair
+                .split_once(',')
+                .expect("invariant: checked candidate offset is a pair");
+            offsets.push((
+                x.trim()
+                    .parse()
+                    .expect("invariant: checked offset component is an integer"),
+                y.trim()
+                    .parse()
+                    .expect("invariant: checked offset component is an integer"),
+            ));
+        }
+        offsets
+    }
+    static FULLPEL: OnceLock<Vec<(i32, i32)>> = OnceLock::new();
+    static SUBPEL_PATTERN: OnceLock<Vec<(i32, i32)>> = OnceLock::new();
+    match key {
+        "fullpel_pattern" => FULLPEL.get_or_init(|| parse("fullpel_pattern")).as_slice(),
+        "subpel_order" => SUBPEL_PATTERN
+            .get_or_init(|| parse("subpel_order"))
+            .as_slice(),
+        other => panic!("invariant: unknown declared search pattern {other}"),
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct MotionSearchResult {
@@ -86,7 +124,7 @@ pub(crate) fn estimate_motion(
     loop {
         let ring_center = diamond_center.motion_vector;
         let mut ring_best = diamond_center;
-        for (delta_x, delta_y) in DIAMOND {
+        for &(delta_x, delta_y) in pattern("fullpel_pattern") {
             let candidate = MotionVector {
                 x_q4: ring_center.x_q4.saturating_add(delta_x * 4),
                 y_q4: ring_center.y_q4.saturating_add(delta_y * 4),
@@ -110,7 +148,7 @@ pub(crate) fn estimate_motion(
             break;
         }
         let ring_center = best.motion_vector;
-        for (delta_x, delta_y) in SUBPEL {
+        for &(delta_x, delta_y) in pattern("subpel_order") {
             let candidate = MotionVector {
                 x_q4: ring_center.x_q4.saturating_add(delta_x * step),
                 y_q4: ring_center.y_q4.saturating_add(delta_y * step),

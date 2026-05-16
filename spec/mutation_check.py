@@ -81,6 +81,20 @@ def bump_shift_formula(key):
     return apply
 
 
+def bump_phase_weight(key):
+    """Changes one weight inside a multi-line phase blend table."""
+
+    def apply(text):
+        match = re.search(r'^%s = \[\n  \[[^\]]*\],\n  \[(\d+), (\d+), (\d+),' % re.escape(key), text, re.MULTILINE)
+        if not match:
+            raise SystemExit("mutation target %s not found" % key)
+        value = int(match.group(3)) + 1
+        start, end = match.span(3)
+        return text[:start] + str(value) + text[end:]
+
+    return apply
+
+
 def bump_first_case_expectation(text):
     """Changes one expected sample of the first motion-compensation case."""
     match = re.search(r"^expected = \[\s*(\d+)", text, re.MULTILINE)
@@ -131,6 +145,7 @@ CASES = [
     Case("intra.toml", "the forty-five degree angle", bump_scalar("d45"), True),
     Case("intra.toml", "the unavailable-neighbor substitute", bump_scalar("unavailable_fallback"), True),
     Case("mc.toml", "one interpolation filter tap", bump_first_in_array("filter_taps"), True),
+    Case("mc.toml", "one declared phase blend weight", bump_phase_weight("luma_phase_sequences"), True),
     Case("mc.toml", "the two-stage rounding bias", bump_scalar("two_stage_rounding"), True),
     Case("mc.toml", "the quarter-pixel phase denominator", bump_scalar("phase_denominator"), True),
     Case("mc-vectors.toml", "one expected interpolated sample", bump_first_case_expectation, True),

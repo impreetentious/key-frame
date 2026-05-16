@@ -107,6 +107,22 @@ expected = [0, 0, 0, 0, 48, 48, 48, 48]
 activity_skip = true
 
 [[vectors]]
+name = "activity_skip_beta_p"
+kind = "weak"
+qp = 32
+samples = [112, 112, 112, 100, 106, 106, 106, 106]
+expected = [112, 112, 112, 100, 106, 106, 106, 106]
+activity_skip = true
+
+[[vectors]]
+name = "activity_skip_beta_q"
+kind = "weak"
+qp = 32
+samples = [100, 100, 100, 100, 106, 118, 118, 118]
+expected = [100, 100, 100, 100, 106, 118, 118, 118]
+activity_skip = true
+
+[[vectors]]
 name = "weak_negative_delta"
 kind = "weak"
 qp = 32

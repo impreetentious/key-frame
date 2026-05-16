@@ -17,6 +17,40 @@ use kf_transform::{
 use crate::motion_search::estimate_motion;
 use crate::{EncodeError, FrameDecision, GopPlanner, RateControl, RateController, Toolset};
 
+/// The intra modes the search tries, in the order the asset declares.
+///
+/// The declared tie-break for equal-cost modes is the lower index, so this
+/// order decides which mode a block gets whenever two price the same. A copy of
+/// the list here would be a second, competing statement of that tie-break.
+fn declared_intra_order() -> &'static [IntraMode] {
+    static ORDER: std::sync::OnceLock<Vec<IntraMode>> = std::sync::OnceLock::new();
+    ORDER.get_or_init(|| {
+        let contents = kf_spec::V1_ASSETS
+            .iter()
+            .find(|asset| asset.name == "search.toml")
+            .expect("invariant: kf-spec exposes search.toml")
+            .contents;
+        let body = contents
+            .lines()
+            .find_map(|line| line.strip_prefix("intra_mode_order = ["))
+            .and_then(|line| line.strip_suffix(']'))
+            .expect("invariant: checked search asset lists the intra mode order");
+        body.split(',')
+            .map(|name| match name.trim().trim_matches('"') {
+                "dc" => IntraMode::Dc,
+                "planar" => IntraMode::Planar,
+                "horizontal" => IntraMode::Horizontal,
+                "vertical" => IntraMode::Vertical,
+                "d45" => IntraMode::D45,
+                "d135" => IntraMode::D135,
+                "d117" => IntraMode::D117,
+                "d153" => IntraMode::D153,
+                other => panic!("invariant: checked asset names a known intra mode, got {other}"),
+            })
+            .collect()
+    })
+}
+
 /// Canonical replay accounting for one encoded coding block.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BlockAccounting {
@@ -826,16 +860,7 @@ fn select_prediction(
             consider_candidate(writer, frame_type, candidate, lambda, &mut best)?;
         }
     }
-    for mode in [
-        IntraMode::Dc,
-        IntraMode::Planar,
-        IntraMode::Horizontal,
-        IntraMode::Vertical,
-        IntraMode::D45,
-        IntraMode::D135,
-        IntraMode::D117,
-        IntraMode::D153,
-    ] {
+    for &mode in declared_intra_order() {
         let candidate =
             build_intra_candidate(source, reconstructed, motion_field, x, y, size, qp, mode)?;
         consider_candidate(writer, frame_type, candidate, lambda, &mut best)?;

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Every declared number has to be used by something.
+# Every declared number and table has to be used by something.
 #
 # Three separate audits of this repository found the same defect: a numeric
 # scalar declared in a frozen specification asset, described in the generated
@@ -31,22 +31,36 @@ cd "$repo_root"
 unread=""
 count=0
 
+# A key counts as read if its name appears in something that runs, or if the
+# codebase builds the name at runtime. The size-suffixed tables are the second
+# case: `matrix.rs` and `scan.rs` reach `n4` through `format!("n{size} = [")`,
+# so the literal name is never written down and a plain search would call a
+# table that every transform depends on unread.
+interpolated='^n(4|8|16|32)$'
+
 while IFS=: read -r asset key; do
   [[ -n "$key" ]] || continue
   count=$((count + 1))
+  if [[ "$key" =~ $interpolated ]] && grep -rq 'n{size} = \[' crates 2>/dev/null; then
+    continue
+  fi
   if ! grep -rqw -- "$key" crates spec/*.py scripts inspector/src 2>/dev/null; then
     unread+="  $asset: $key"$'\n'
   fi
 done < <(
   for asset in spec/v1/*.toml; do
-    grep -oE '^[a-z_0-9]+ = -?[0-9]+$' "$asset" \
+    # Scalars and arrays alike. An unread array is the same defect as an unread
+    # scalar and hides better: a table of numbers reads as authoritative, and a
+    # coefficient-coding parameter table survived in this tree describing a
+    # scheme the codec never implemented.
+    grep -oE '^[a-z_0-9]+ = (-?[0-9]+|\[)' "$asset" \
       | sed "s/ = .*//" \
       | sed "s|^|$(basename "$asset"):|"
   done | sort -u
 )
 
 if [[ -n "$unread" ]]; then
-  echo "declared-scalar-use: the specification declares numbers nothing reads"
+  echo "declared-scalar-use: the specification declares values nothing reads"
   printf '%s' "$unread"
   echo "  Each one is normative text a reader would take on trust and no test would defend."
   echo "  Make the implementation read it, or derive it in spec/check_assets.py from"
@@ -55,4 +69,4 @@ if [[ -n "$unread" ]]; then
   exit 1
 fi
 
-echo "declared-scalar-use: OK — $count declared scalar(s), every one reachable from something that runs"
+echo "declared-scalar-use: OK — $count declared scalar(s) and table(s), every one reachable from something that runs"

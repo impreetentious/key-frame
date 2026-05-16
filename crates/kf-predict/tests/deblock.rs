@@ -54,7 +54,7 @@ fn parse_u8s(body: &str) -> [u8; 8] {
 #[test]
 fn frozen_deblock_vectors_replay() {
     let vectors = parse_vectors();
-    assert_eq!(vectors.len(), 5);
+    assert_eq!(vectors.len(), 7);
     for vector in vectors {
         let strength = if vector.kind == "strong" { 2 } else { 1 };
         let luma = filter_samples(vector.samples, vector.qp, strength, false);

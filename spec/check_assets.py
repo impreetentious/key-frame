@@ -22,6 +22,15 @@ def array(path, key):
     return ast.literal_eval(match.group(1))
 
 
+def block_array(path, key):
+    """Reads an array that spans several lines, as the phase tables do."""
+    text = path.read_text(encoding="utf-8")
+    match = re.search(r"^%s\s*=\s*(\[.*?\n\])" % re.escape(key), text, re.MULTILINE | re.DOTALL)
+    if not match:
+        raise AssertionError("%s: missing array %s" % (path, key))
+    return ast.literal_eval(match.group(1))
+
+
 def rounded(value):
     return int(math.floor(value + 0.5))
 
@@ -252,6 +261,46 @@ def main():
     if scalar_int(constants, "inspector_cif_frame_milliseconds") * 25 != 1000:
         errors.append("constants.toml inspector_cif_frame_milliseconds is not the 25fps CIF interval")
 
+    # The enumerations that name the same closed sets as other assets. Each was
+    # declared and read by nothing, so a set could gain or lose a member in one
+    # place and the rest of the tree would go on describing the old one.
+    syntax_asset = V1 / "syntax.toml"
+    intra = V1 / "intra.toml"
+    if sorted(array(constants, "coding_block_sizes")) != sorted(array(search, "partition_sizes")):
+        errors.append("constants.toml coding_block_sizes and search.toml partition_sizes name different sets")
+    if sorted(array(constants, "transform_sizes")) != [4, 8, 16, 32]:
+        errors.append("constants.toml transform_sizes is not the four declared transform sizes")
+    for size in array(constants, "transform_sizes"):
+        if not (V1 / "transforms.toml").read_text(encoding="utf-8").count("n%d = [" % size):
+            errors.append("constants.toml transform_sizes names %d with no matching matrix" % size)
+    if array(syntax_asset, "intra_modes") != array(intra, "modes"):
+        errors.append("syntax.toml intra_modes and intra.toml modes name different modes in different orders")
+    if array(syntax_asset, "intra_modes") != array(search, "intra_mode_order"):
+        errors.append("syntax.toml intra_modes and search.toml intra_mode_order disagree")
+    # Intra prediction runs on coding blocks and on transform blocks, so the
+    # sizes it declares are the union of both.
+    if sorted(array(intra, "sizes")) != sorted(set(array(constants, "coding_block_sizes")) | set(array(constants, "transform_sizes"))):
+        errors.append("intra.toml sizes is not the union of the coding-block and transform sizes")
+
+    # The deblock vocabulary has to be exactly what its own decision rows use.
+    deblock_text = deblock.read_text(encoding="utf-8")
+    used_kinds = sorted(set(re.findall(r'^edge_kind = "([^"]+)"$', deblock_text, re.MULTILINE)))
+    used_strengths = sorted(set(int(value) for value in re.findall(r"^strength = (\d+)$", deblock_text, re.MULTILINE)))
+    if sorted(array(deblock, "edge_kinds")) != used_kinds:
+        errors.append("deblock.toml edge_kinds does not match the kinds its decision rows use")
+    if not set(used_strengths) <= set(array(deblock, "strengths")):
+        errors.append("deblock.toml uses a strength its own vocabulary does not declare")
+
+    # The header rules have to name fields the header actually has.
+    try:
+        sequence_fields = set(layout("sequence"))
+        for rule in ("required_nonzero", "reserved_zero"):
+            for name in array(fields_path, rule):
+                if name not in sequence_fields:
+                    errors.append("fields.toml %s names %s, which the sequence header does not contain" % (rule, name))
+    except (AssertionError, KeyError, ValueError) as error:
+        errors.append("fields.toml header rules are malformed: %s" % error)
+
     # The declared sub-pixel round count is the length of the declared step
     # list. The encoder asserts this too, but the assertion runs only when the
     # Rust is built, and this harness never builds it.
@@ -446,6 +495,52 @@ def main():
             return mc_blend(integer, half, phase, half_phase)
         return mc_blend(half, next_integer, phase - half_phase, half_phase)
 
+    def check_phase_sequences(key, denominator):
+        """The declared blend table and the blend the codec performs, compared.
+
+        `mc.toml` enumerates, for every phase, which two reference positions are
+        blended, with what weight, over what denominator, and with what rounding
+        bias. Nothing read that table: both decoders and this checker derive the
+        blend from the phase index instead, so the enumeration was normative
+        text describing an algorithm nobody compared it against. The two are
+        compared here on sample values rather than symbolically, because the
+        table writes its fractions reduced — a chroma quarter-phase is declared
+        as one half over two, not two over four — and reduced fractions are
+        equal without being identical.
+        """
+        positions = {0: "integer", 1: "half", 2: "next"}
+        for phase, sequence in enumerate(block_array(V1 / "mc.toml", key)):
+            if len(sequence) != 5:
+                errors.append("mc.toml %s phase %d is not a five-field blend" % (key, phase))
+                continue
+            left_position, right_position, right_weight, weight_denominator, bias = sequence
+            if left_position not in positions or right_position not in positions:
+                errors.append("mc.toml %s phase %d names an unknown reference position" % (key, phase))
+                continue
+            if bias * 2 != weight_denominator and not (weight_denominator == 1 and bias == 0):
+                errors.append("mc.toml %s phase %d has a bias that is not half its denominator" % (key, phase))
+            # Sample values chosen so every position is distinguishable and the
+            # weights cannot coincide by accident.
+            for integer, half, following in ((0, 255, 17), (255, 0, 200), (40, 90, 130), (7, 7, 7)):
+                samples = {"integer": integer, "half": half, "next": following}
+                left = samples[positions[left_position]]
+                right = samples[positions[right_position]]
+                declared = (
+                    left * (weight_denominator - right_weight) + right * right_weight + bias
+                ) // weight_denominator
+                performed = mc_phase(integer, half, following, phase, denominator)
+                if declared != performed:
+                    errors.append(
+                        "mc.toml %s phase %d declares %d where the blend produces %d"
+                        % (key, phase, declared, performed)
+                    )
+                    break
+
+    check_phase_sequences("luma_phase_sequences", scalar_int(V1 / "mc.toml", "phase_denominator"))
+    check_phase_sequences(
+        "chroma_phase_sequences", scalar_int(V1 / "mc.toml", "chroma_phase_denominator")
+    )
+
     def mc_vector(source, width, height, block_x, block_y, block_size, mv, denominator):
         # Taken from the asset, not restated. A literal copy here would agree
         # with the Rust's literals and with nothing else, which is exactly the
@@ -569,8 +664,29 @@ def main():
         r'\[\[vectors\]\]\nname = "([^"]+)"\nkind = "(weak|strong)"\nqp = (\d+)\nsamples = (\[.*\])\nexpected = (\[.*\])',
         deblock_text,
     )
-    if len(deblock_cases) != 5:
-        errors.append("deblock.toml must contain 5 reviewed filter vectors")
+    if len(deblock_cases) != 7:
+        errors.append("deblock.toml must contain 7 reviewed filter vectors")
+    # A count alone only says vectors were not deleted. What matters is that
+    # every activity rule the asset declares has a vector that would fail if the
+    # rule were dropped: two of the three skip conditions had none, so removing
+    # either from both decoders left this gate green and surfaced only as an
+    # unexplained conformance hash drift.
+    skip_rules = [
+        ("skip_if_abs_p0_q0_ge_alpha", "activity_skip_alpha"),
+        ("skip_if_abs_p1_p0_ge_beta", "activity_skip_beta_p"),
+        ("skip_if_abs_q1_q0_ge_beta", "activity_skip_beta_q"),
+    ]
+    declared_names = [name for name, _, _, _, _ in deblock_cases]
+    for rule, vector_name in skip_rules:
+        if not re.search(r"^%s = true$" % re.escape(rule), deblock_text, re.MULTILINE):
+            errors.append("deblock.toml no longer declares %s" % rule)
+        if vector_name not in declared_names:
+            errors.append("deblock.toml declares %s with no %s vector to defend it" % (rule, vector_name))
+        else:
+            index = declared_names.index(vector_name)
+            _, _, _, samples_text, expected_text = deblock_cases[index]
+            if ast.literal_eval(samples_text) != ast.literal_eval(expected_text):
+                errors.append("deblock.toml %s must leave its samples untouched" % vector_name)
     for name, kind, qp_text, samples_text, expected_text in deblock_cases:
         samples = ast.literal_eval(samples_text)
         expected = ast.literal_eval(expected_text)

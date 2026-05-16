@@ -204,8 +204,18 @@ fn generate(check: bool) -> Result<(), String> {
         for (path, expected) in artifacts {
             let actual = fs::read(&path).map_err(|error| format!("{}: {error}", path.display()))?;
             if actual != expected {
+                // Deliberately not "regenerate the suite". These streams are
+                // the frozen record of what version one means, so drift is a
+                // behaviour change until proven otherwise: a codec edit that
+                // silently altered reconstruction produces exactly this
+                // failure, and regenerating would bake the regression into the
+                // record that is supposed to catch it. Regenerating is correct
+                // only for a deliberate, separately justified format change.
                 return Err(format!(
-                    "{} drifted; regenerate the multi-origin suite",
+                    "{} drifted from the committed conformance record.\n  \
+                     This is a behaviour change until you have shown otherwise. Find what \
+                     altered the coded bytes or the reconstruction first;\n  \
+                     regenerate only for a format change you intended and can justify.",
                     path.display()
                 ));
             }

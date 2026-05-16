@@ -52,10 +52,23 @@ pub extern "C" fn kf_abi_version() -> u32 {
 /// as a failed allocation. Offset zero is never a valid buffer.
 #[unsafe(no_mangle)]
 pub extern "C" fn kf_alloc(len: usize) -> usize {
-    let mut buffer = vec![0_u8; len];
-    let pointer = buffer.as_mut_ptr();
-    core::mem::forget(buffer);
-    pointer as usize
+    // Fallible on purpose. `vec![0; len]` would call `handle_alloc_error` when
+    // the module cannot grow its memory, which on this target is an
+    // `unreachable` trap: the instance dies and every later call fails, so the
+    // host's "could not allocate room for the stream" path was unreachable and
+    // a large stream took the whole session down instead of returning an error.
+    let mut buffer: Vec<u8> = Vec::new();
+    if buffer.try_reserve_exact(len).is_err() {
+        return 0;
+    }
+    buffer.resize(len, 0);
+    // `kf_free` rebuilds this allocation from the offset and length alone, so
+    // the capacity has to equal the length exactly. `try_reserve_exact` gives
+    // exactly `len` for a byte vector, and the conversion below is then a
+    // no-op that makes the requirement explicit rather than assumed.
+    debug_assert_eq!(buffer.capacity(), len);
+    let boxed = buffer.into_boxed_slice();
+    Box::into_raw(boxed).cast::<u8>() as usize
 }
 
 /// Releases a buffer previously returned by [`kf_alloc`].
@@ -69,7 +82,10 @@ pub extern "C" fn kf_free(offset: usize, len: usize) {
     // that the buffer has not already been freed. Reconstructing the `Vec` with
     // the same length and capacity is the inverse of the `mem::forget` there.
     unsafe {
-        drop(Vec::from_raw_parts(offset as *mut u8, len, len));
+        drop(Box::from_raw(core::ptr::slice_from_raw_parts_mut(
+            offset as *mut u8,
+            len,
+        )));
     }
 }
 
@@ -198,7 +214,33 @@ mod tests {
         0x7c, 0x2a, 0x57, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     ];
 
+    /// An allocation the module cannot satisfy has to be reported, not fatal.
+    ///
+    /// The host checks the returned offset for zero and raises a clean error.
+    /// That path was unreachable while this function allocated infallibly: the
+    /// allocator aborted instead, which on the WebAssembly target traps and
+    /// kills the instance, so an oversized stream ended the session rather than
+    /// failing one call.
+    #[test]
+    fn an_impossible_allocation_is_reported_rather_than_fatal() {
+        assert_eq!(kf_alloc(usize::MAX), 0);
+        assert_eq!(kf_alloc(usize::MAX / 2), 0);
+        // The module stays usable afterwards, which is the whole point.
+        let offset = kf_alloc(16);
+        assert_ne!(offset, 0);
+        kf_free(offset, 16);
+    }
+
+    /// A zero-length request is still a usable, freeable buffer.
+    #[test]
+    fn an_empty_allocation_round_trips() {
+        let offset = kf_alloc(0);
+        assert_ne!(offset, 0, "zero is reserved for failure");
+        kf_free(offset, 0);
+    }
+
     /// Copies a stream through the real allocation path, exactly as a host
+    /// would, rather than reaching past the boundary being tested.    /// Copies a stream through the real allocation path, exactly as a host
     /// would, rather than reaching past the boundary being tested.
     fn open_oracle() -> (usize, usize) {
         let len = ORACLE_STREAM.len();
