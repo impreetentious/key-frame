@@ -1,8 +1,71 @@
+use std::sync::OnceLock;
+
 use kf_frame::Plane;
+use kf_spec::V1_ASSETS;
 
 use crate::ReferenceError;
 
-const TAPS: [i32; 6] = [1, -5, 20, 20, -5, 1];
+/// Motion-compensation constants read from the frozen asset.
+///
+/// This decoder agrees with the production one only by way of the
+/// specification, so it reads the same declarations rather than repeating their
+/// values. The reader below is this crate's own: independence means not sharing
+/// the implementation, not refusing to read the same normative bytes.
+struct RefMc {
+    taps: Vec<i32>,
+    scale: i32,
+    rounding: i32,
+    shift: u32,
+    edge: i64,
+    fullpel_limit: i32,
+    luma_denominator: i32,
+    chroma_denominator: i32,
+}
+
+fn mc() -> &'static RefMc {
+    static MC: OnceLock<RefMc> = OnceLock::new();
+    MC.get_or_init(|| {
+        let contents = V1_ASSETS
+            .iter()
+            .find(|asset| asset.name == "mc.toml")
+            .expect("invariant: kf-spec exposes mc.toml")
+            .contents;
+        let number = |key: &str| -> i32 {
+            let prefix = format!("{key} = ");
+            contents
+                .lines()
+                .find_map(|line| line.strip_prefix(&prefix))
+                .expect("invariant: checked motion asset declares every scalar")
+                .trim()
+                .parse::<i32>()
+                .expect("invariant: checked motion scalar is an integer")
+        };
+        let taps = contents
+            .lines()
+            .find_map(|line| line.strip_prefix("filter_taps = ["))
+            .and_then(|body| body.strip_suffix(']'))
+            .expect("invariant: checked motion asset lists the filter taps")
+            .split(',')
+            .map(|value| {
+                value
+                    .trim()
+                    .parse::<i32>()
+                    .expect("invariant: checked filter tap is an integer")
+            })
+            .collect();
+        RefMc {
+            taps,
+            scale: number("filter_denominator"),
+            rounding: number("two_stage_rounding"),
+            shift: u32::try_from(number("two_stage_shift"))
+                .expect("invariant: checked stage shift is not negative"),
+            edge: i64::from(number("edge_extension_pixels")),
+            fullpel_limit: number("fullpel_search_max"),
+            luma_denominator: number("phase_denominator"),
+            chroma_denominator: number("chroma_phase_denominator"),
+        }
+    })
+}
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) struct RefMotionVector {
@@ -110,7 +173,11 @@ pub(crate) fn clamp_motion(
     motion: RefMotionVector,
     chroma: bool,
 ) -> RefMotionVector {
-    let denominator = if chroma { 8 } else { 4 };
+    let denominator = if chroma {
+        mc().chroma_denominator
+    } else {
+        mc().luma_denominator
+    };
     RefMotionVector {
         x_q4: clamp_component(
             motion.x_q4,
@@ -137,7 +204,11 @@ pub(crate) fn predict_inter(
     motion: RefMotionVector,
     chroma: bool,
 ) -> Vec<u8> {
-    let denominator = if chroma { 8 } else { 4 };
+    let denominator = if chroma {
+        mc().chroma_denominator
+    } else {
+        mc().luma_denominator
+    };
     let x_base = i64::from(x) + i64::from(motion.x_q4.div_euclid(denominator));
     let y_base = i64::from(y) + i64::from(motion.y_q4.div_euclid(denominator));
     let x_phase = motion.x_q4.rem_euclid(denominator);
@@ -148,9 +219,10 @@ pub(crate) fn predict_inter(
             let source_x = x_base + i64::from(column);
             let source_y = y_base + i64::from(row);
             let scaled = if y_phase == 0 {
-                horizontal(plane, source_x, source_y, x_phase, denominator) * 32
+                horizontal(plane, source_x, source_y, x_phase, denominator) * mc().scale
             } else {
-                let half = TAPS
+                let half = mc()
+                    .taps
                     .iter()
                     .enumerate()
                     .map(|(index, &tap)| {
@@ -164,25 +236,28 @@ pub(crate) fn predict_inter(
                     })
                     .sum();
                 phase(
-                    horizontal(plane, source_x, source_y, x_phase, denominator) * 32,
+                    horizontal(plane, source_x, source_y, x_phase, denominator) * mc().scale,
                     half,
-                    horizontal(plane, source_x, source_y + 1, x_phase, denominator) * 32,
+                    horizontal(plane, source_x, source_y + 1, x_phase, denominator) * mc().scale,
                     y_phase,
                     denominator,
                 )
             };
-            output.push(u8::try_from(((scaled + 512) >> 10).clamp(0, 255)).unwrap());
+            output.push(
+                u8::try_from(((scaled + mc().rounding) >> mc().shift).clamp(0, 255)).unwrap(),
+            );
         }
     }
     output
 }
 
 fn horizontal(plane: &Plane, x: i64, y: i64, phase_index: i32, denominator: i32) -> i32 {
-    let integer = i32::from(sample(plane, x, y)) * 32;
+    let integer = i32::from(sample(plane, x, y)) * mc().scale;
     if phase_index == 0 {
         return integer;
     }
-    let half = TAPS
+    let half = mc()
+        .taps
         .iter()
         .enumerate()
         .map(|(index, &tap)| {
@@ -192,7 +267,7 @@ fn horizontal(plane: &Plane, x: i64, y: i64, phase_index: i32, denominator: i32)
     phase(
         integer,
         half,
-        i32::from(sample(plane, x + 1, y)) * 32,
+        i32::from(sample(plane, x + 1, y)) * mc().scale,
         phase_index,
         denominator,
     )
@@ -221,7 +296,10 @@ fn sample(plane: &Plane, x: i64, y: i64) -> u8 {
 }
 
 fn clamp_component(requested: i32, block: i64, size: i64, extent: i64, denominator: i32) -> i32 {
-    let mut value = requested.clamp(-256, 256);
+    // Quarter-luma units on every plane, so the bound always converts
+    // through the luma denominator.
+    let limit = mc().fullpel_limit * mc().luma_denominator;
+    let mut value = requested.clamp(-limit, limit);
     while !legal(value, block, size, extent, denominator) {
         value -= value.signum();
     }
@@ -233,7 +311,7 @@ fn legal(value: i32, block: i64, size: i64, extent: i64, denominator: i32) -> bo
     let fractional = value.rem_euclid(denominator) != 0;
     let first = block + integer - i64::from(fractional) * 2;
     let last = block + size - 1 + integer + i64::from(fractional) * 3;
-    first >= -64 && last <= extent - 1 + 64
+    first >= -mc().edge && last <= extent - 1 + mc().edge
 }
 
 fn median(first: i32, second: i32, third: i32) -> i32 {

@@ -15,6 +15,7 @@ kf-frame = { path = "../kf-frame" }
 kf-probe = { path = "../kf-probe" }
 kf-range = { path = "../kf-range" }
 kf-ref = { path = "../kf-ref" }
+kf-spec = { path = "../kf-spec" }
 
 # This crate does not inherit the workspace lint table. Quality metrics are
 # floating point by definition — PSNR is a logarithm and SSIM is a ratio of

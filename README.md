@@ -187,13 +187,13 @@ One command runs every gate, in the order continuous integration runs them:
 ./scripts/preflight.sh
 ```
 
-It checks version, documentation, claim, license, and specification coherence,
-then the range-coder, transform, bitstream, syntax, reference-decoder, probe,
-intra, conformance, inter, entropy, deblock, natural-corpus, rate-control,
-quality-metric, decoder-campaign, error-matrix, conformance-coverage,
-random-access seek, native-to-WebAssembly equality, and projection-room gates,
-then formatting, lints, the forbidden-API and decoder-boundary scan, the full
-test suite, and the documentation build.
+It checks version, documentation, claim, declared-scalar, license, and
+specification coherence, then the range-coder, transform, bitstream, syntax,
+reference-decoder, probe, intra, conformance, inter, entropy, deblock,
+natural-corpus, rate-control, quality-metric, decoder-campaign, error-matrix,
+conformance-coverage, random-access seek, native-to-WebAssembly equality, and
+projection-room gates, then formatting, lints, the forbidden-API and
+decoder-boundary scan, the full test suite, and the documentation build.
 
 ## Build and deploy
 
@@ -217,4 +217,4 @@ preflight green.
 
 ---
 
-**Version:** v0.13.3
+**Version:** v0.13.4

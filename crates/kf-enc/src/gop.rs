@@ -1,9 +1,44 @@
 use std::collections::VecDeque;
+use std::sync::OnceLock;
+
+use kf_spec::V1_ASSETS;
 
 use crate::EncodeError;
 
-const SCENE_HISTORY_LIMIT: usize = 16;
-const SCENE_HISTORY_MINIMUM: usize = 4;
+/// Scene-cut history bounds, read from the frozen search asset.
+///
+/// These do not change what a stream means, but they do change which streams
+/// this encoder produces, and the asset states them as part of the declared
+/// search. Restating them here would let the two drift with nothing to notice.
+struct SceneHistory {
+    capacity: usize,
+    minimum: usize,
+}
+
+fn scene_history() -> &'static SceneHistory {
+    static HISTORY: OnceLock<SceneHistory> = OnceLock::new();
+    HISTORY.get_or_init(|| {
+        let contents = V1_ASSETS
+            .iter()
+            .find(|asset| asset.name == "search.toml")
+            .expect("invariant: kf-spec exposes search.toml")
+            .contents;
+        let number = |key: &str| -> usize {
+            let prefix = format!("{key} = ");
+            contents
+                .lines()
+                .find_map(|line| line.strip_prefix(&prefix))
+                .expect("invariant: checked search asset declares the scene-cut bounds")
+                .trim()
+                .parse::<usize>()
+                .expect("invariant: checked scene-cut bound is a count")
+        };
+        SceneHistory {
+            capacity: number("history_capacity"),
+            minimum: number("history_minimum"),
+        }
+    })
+}
 
 /// Authoritative frame-class and reference-refresh decision.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -42,7 +77,7 @@ impl GopPlanner {
             last_frame_index: None,
             last_key_frame_index: 0,
             golden_p_count: 0,
-            transition_history: VecDeque::with_capacity(SCENE_HISTORY_LIMIT),
+            transition_history: VecDeque::with_capacity(scene_history().capacity),
         })
     }
 
@@ -84,7 +119,7 @@ impl GopPlanner {
             true
         } else {
             self.transition_history.push_back(transition_sad);
-            if self.transition_history.len() > SCENE_HISTORY_LIMIT {
+            if self.transition_history.len() > scene_history().capacity {
                 self.transition_history.pop_front();
             }
             self.golden_p_count = self
@@ -106,7 +141,7 @@ impl GopPlanner {
     }
 
     fn is_scene_cut(&self, transition_sad: u64) -> Result<bool, EncodeError> {
-        if transition_sad == 0 || self.transition_history.len() < SCENE_HISTORY_MINIMUM {
+        if transition_sad == 0 || self.transition_history.len() < scene_history().minimum {
             return Ok(false);
         }
         let history_sum = self

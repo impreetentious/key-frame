@@ -1,7 +1,52 @@
+use std::sync::OnceLock;
+
 use kf_frame::Plane;
 use kf_predict::{MotionVector, PlaneScale, clamp_motion_vector, predict_inter};
+use kf_spec::V1_ASSETS;
 
 use crate::EncodeError;
+
+/// The sub-pixel refinement step sizes, in quarter-pixel units.
+///
+/// The declared list is both the step sizes and, by its length, the declared
+/// round count. Reading it here keeps the search this encoder performs the
+/// search the asset describes.
+fn subpel_steps() -> &'static [i32] {
+    static STEPS: OnceLock<Vec<i32>> = OnceLock::new();
+    STEPS.get_or_init(|| {
+        let contents = V1_ASSETS
+            .iter()
+            .find(|asset| asset.name == "search.toml")
+            .expect("invariant: kf-spec exposes search.toml")
+            .contents;
+        let steps: Vec<i32> = contents
+            .lines()
+            .find_map(|line| line.strip_prefix("subpel_steps_q4 = ["))
+            .and_then(|body| body.strip_suffix(']'))
+            .expect("invariant: checked search asset lists the sub-pixel steps")
+            .split(',')
+            .map(|value| {
+                value
+                    .trim()
+                    .parse::<i32>()
+                    .expect("invariant: checked sub-pixel step is an integer")
+            })
+            .collect();
+        let declared_rounds: usize = contents
+            .lines()
+            .find_map(|line| line.strip_prefix("subpel_rounds = "))
+            .expect("invariant: checked search asset declares the round count")
+            .trim()
+            .parse()
+            .expect("invariant: checked round count is a count");
+        assert_eq!(
+            steps.len(),
+            declared_rounds,
+            "invariant: checked sub-pixel step list matches the declared round count"
+        );
+        steps
+    })
+}
 
 const DIAMOND: [(i32, i32); 4] = [(0, -1), (-1, 0), (1, 0), (0, 1)];
 const SUBPEL: [(i32, i32); 8] = [
@@ -60,7 +105,7 @@ pub(crate) fn estimate_motion(
     // them leaves the result on an integer position, which is exactly the
     // comparison the subpel ablation wants; it is not a cheaper search for the
     // same answer.
-    for step in [2, 1] {
+    for &step in subpel_steps() {
         if !subpel {
             break;
         }

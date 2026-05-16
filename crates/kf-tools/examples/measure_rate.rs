@@ -64,14 +64,33 @@ fn run(arguments: Vec<String>) -> Result<(), String> {
         hundredths % 100,
         qps.join(",")
     );
-    if delta.saturating_mul(100) > target_bits.saturating_mul(5) {
+    // The tolerance is the one the constant table declares, not one this
+    // example chose. A threshold written here would be a second, competing
+    // statement of what "within tolerance" means.
+    let tolerance = declared_tolerance_percent();
+    if delta.saturating_mul(100) > target_bits.saturating_mul(u64::from(tolerance)) {
         return Err(format!(
-            "rate error {}.{}% exceeds 5%",
+            "rate error {}.{}% exceeds {tolerance}%",
             hundredths / 100,
             hundredths % 100
         ));
     }
     Ok(())
+}
+
+/// The declared average-bitrate tolerance, in percent.
+fn declared_tolerance_percent() -> u32 {
+    kf_spec::V1_ASSETS
+        .iter()
+        .find(|asset| asset.name == "constants.toml")
+        .expect("invariant: kf-spec exposes constants.toml")
+        .contents
+        .lines()
+        .find_map(|line| line.strip_prefix("abr_tolerance_percent = "))
+        .expect("invariant: checked constant table declares the bitrate tolerance")
+        .trim()
+        .parse()
+        .expect("invariant: checked tolerance is a percentage")
 }
 
 fn flag<'a>(arguments: &'a [String], name: &str) -> Result<&'a str, String> {

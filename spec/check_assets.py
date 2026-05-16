@@ -137,6 +137,210 @@ def main():
     if declared_shift("inverse_shift1", 4) != scalar_int(V1 / "transforms.toml", "coefficient_scale_bits"):
         errors.append("transforms.toml inverse_shift1 does not undo coefficient_scale_bits")
 
+    # The packet and sequence headers are the most safety-critical declarations
+    # in the tree — a decoder reads bytes at these offsets before it trusts
+    # anything — and every scalar around them was unverified prose. They are all
+    # derivable from the field layout the same asset lists, so they are derived
+    # here rather than taken on faith.
+    fields_path = V1 / "fields.toml"
+    fields_text = fields_path.read_text(encoding="utf-8")
+    widths = {"u8": 1, "u16": 2, "u32": 4}
+
+    def layout(section):
+        """Returns {name: (offset, width)} for one header's declared fields."""
+        body = fields_text.split("[%s]" % section, 1)[1]
+        listing = re.search(r"fields = \[(.*?)\]", body, re.DOTALL)
+        if not listing:
+            raise AssertionError("fields.toml: %s declares no field list" % section)
+        parsed = {}
+        for entry in re.findall(r'"([^"]+)"', listing.group(1)):
+            name, rest = entry.split(":", 1)
+            kind, offset = rest.split("@", 1)
+            parsed[name] = (int(offset), widths.get(kind))
+        return parsed
+
+    def scoped(section, key):
+        """Reads a scalar from one section, not from whichever section is first."""
+        body = fields_text.split("[%s]" % section, 1)[1].split("\n[", 1)[0]
+        match = re.search(r"^%s\s*=\s*(-?\d+)\s*$" % re.escape(key), body, re.MULTILINE)
+        return int(match.group(1)) if match else None
+
+    try:
+        sequence = layout("sequence")
+        crc_offset, crc_width = sequence["header_crc32c"]
+        if scoped("sequence", "size_bytes") != crc_offset + crc_width:
+            errors.append("fields.toml sequence size_bytes is not the end of its last field")
+        if scoped("sequence", "crc_offset") != crc_offset:
+            errors.append("fields.toml sequence crc_offset is not where header_crc32c sits")
+        if scoped("sequence", "crc_start") != 0:
+            errors.append("fields.toml sequence crc_start must cover the header from its first byte")
+        if scoped("sequence", "crc_length") != crc_offset - scoped("sequence", "crc_start"):
+            errors.append("fields.toml sequence crc_length does not reach the checksum it protects")
+
+        packet = layout("packet")
+        header_crc, _ = packet["header_crc32c"]
+        payload_crc, payload_crc_width = packet["payload_crc32c"]
+        payload_offset, _ = packet["payload"]
+        sync_offset, sync_width = packet["sync"]
+        if scoped("packet", "header_crc_offset") != header_crc:
+            errors.append("fields.toml packet header_crc_offset is not where header_crc32c sits")
+        if scoped("packet", "payload_crc_offset") != payload_crc:
+            errors.append("fields.toml packet payload_crc_offset is not where payload_crc32c sits")
+        if scoped("packet", "fixed_size_bytes") != payload_offset:
+            errors.append("fields.toml packet fixed_size_bytes is not where the payload starts")
+        if payload_crc + payload_crc_width != payload_offset:
+            errors.append("fields.toml packet leaves a gap between its checksums and its payload")
+        # The header checksum starts after the sync marker: resynchronization
+        # scans for the marker, so the marker cannot be part of what the
+        # checksum protects.
+        if scoped("packet", "header_crc_start") != sync_offset + sync_width:
+            errors.append("fields.toml packet header_crc_start does not begin after the sync marker")
+        if scoped("packet", "header_crc_length") != header_crc - scoped("packet", "header_crc_start"):
+            errors.append("fields.toml packet header_crc_length does not reach the checksum it protects")
+
+        # The flag masks restate the bit positions listed beside them.
+        key_bit = scoped("packet.flags", "key")
+        golden_bit = scoped("packet.flags", "golden_refresh")
+        show_bit = scoped("packet.flags", "show")
+        named = (1 << key_bit) | (1 << golden_bit) | (1 << show_bit)
+        if scoped("packet.flags", "reserved_mask") != (0xFF & ~named):
+            errors.append("fields.toml reserved_mask is not exactly the unnamed flag bits")
+        if scoped("packet.flags", "required_mask") != 1 << show_bit:
+            errors.append("fields.toml required_mask is not the show bit")
+        if scoped("packet.flags", "key_requires_mask") != 1 << golden_bit:
+            errors.append("fields.toml key_requires_mask is not the golden-refresh bit")
+    except (AssertionError, AttributeError, KeyError, TypeError, ValueError) as error:
+        errors.append("fields.toml is malformed: %s" % error)
+
+    # The last of the declared scalars that nothing else reaches. Each one is
+    # implied by something the assets already say, so each is derived rather
+    # than restated; between them and the checks above, every numeric scalar in
+    # the tree is now load-bearing.
+    constants = V1 / "constants.toml"
+    search = V1 / "search.toml"
+    manifest = V1 / "manifest.toml"
+    deblock = V1 / "deblock.toml"
+    if scalar_int(manifest, "bitstream_version") != scalar_int(constants, "bitstream_version"):
+        errors.append("manifest.toml and constants.toml disagree on the bitstream version")
+    if scalar_int(manifest, "asset_version") < 1:
+        errors.append("manifest.toml asset_version must be a positive revision")
+    if scalar_int(constants, "bit_depth") != 8:
+        errors.append("constants.toml bit_depth is not the eight bits every other table assumes")
+    # The chroma code and name are one fact written twice.
+    if scalar_int(constants, "chroma_code") != 1 or scalar_text(constants, "chroma_name") != "C420jpeg":
+        errors.append("constants.toml chroma_code and chroma_name do not name the same format")
+    if scalar_int(constants, "reference_slots") != len(array(search, "reference_order")):
+        errors.append("constants.toml reference_slots disagrees with the enumerated references")
+    # Deblocking runs on coding-block and transform edges, so the smallest edge
+    # it can meet is the smallest partition the search can choose.
+    if scalar_int(deblock, "minimum_edge_px") != min(array(search, "partition_sizes")):
+        errors.append("deblock.toml minimum_edge_px is not the smallest declared partition")
+    # Every decision row starts at the bottom of the declared quantizer range.
+    declared_minimum_qp = scalar_int(constants, "qp_min")
+    for row in re.findall(r"^minimum_qp = (-?\d+)$", deblock.read_text(encoding="utf-8"), re.MULTILINE):
+        if int(row) != declared_minimum_qp:
+            errors.append("deblock.toml minimum_qp does not start at the declared quantizer floor")
+    # The defaults have to be usable values of the fields they default.
+    if not 0 < scalar_int(constants, "default_keyframe_interval") <= 65535:
+        errors.append("constants.toml default_keyframe_interval does not fit its u16 field")
+    if not 0 < scalar_int(constants, "default_golden_interval") <= 255:
+        errors.append("constants.toml default_golden_interval does not fit its u8 field")
+    if scalar_int(constants, "default_golden_interval") > scalar_int(constants, "default_keyframe_interval"):
+        errors.append("constants.toml refreshes GOLDEN less often than it sends a keyframe")
+    # CIF is twenty-five frames a second, and the page states the interval in
+    # milliseconds; the two have to be the same rate.
+    if scalar_int(constants, "inspector_cif_frame_milliseconds") * 25 != 1000:
+        errors.append("constants.toml inspector_cif_frame_milliseconds is not the 25fps CIF interval")
+
+    # The declared sub-pixel round count is the length of the declared step
+    # list. The encoder asserts this too, but the assertion runs only when the
+    # Rust is built, and this harness never builds it.
+    if scalar_int(V1 / "search.toml", "subpel_rounds") != len(array(V1 / "search.toml", "subpel_steps_q4")):
+        errors.append("search.toml subpel_rounds disagrees with the enumerated sub-pixel steps")
+
+    # Two assets state some of the same facts. That is reasonable — one is the
+    # format's constant table and the other is the component that uses them —
+    # but only if they are made to agree. Nothing reconciled them before, so
+    # editing either one left the normative document quietly contradicting
+    # itself, with both halves passing every gate.
+    constants = V1 / "constants.toml"
+    search = V1 / "search.toml"
+    mc_asset = V1 / "mc.toml"
+    duplicated = [
+        (constants, "scene_history_capacity", search, "history_capacity"),
+        (constants, "scene_history_minimum", search, "history_minimum"),
+        (constants, "mv_fullpel_min", mc_asset, "fullpel_search_min"),
+        (constants, "mv_fullpel_max", mc_asset, "fullpel_search_max"),
+        (constants, "qp_min", V1 / "quant.toml", "qp_min"),
+        (constants, "qp_max", V1 / "quant.toml", "qp_max"),
+        (constants, "coefficient_abs_max", V1 / "quant.toml", "coefficient_abs_max"),
+        (constants, "probability_min", V1 / "costs.toml", "probability_min"),
+        (constants, "probability_max", V1 / "costs.toml", "probability_max"),
+    ]
+    for left_path, left_key, right_path, right_key in duplicated:
+        left = scalar_int(left_path, left_key)
+        right = scalar_int(right_path, right_key)
+        if left is None or right is None or left != right:
+            errors.append(
+                "%s %s (%s) and %s %s (%s) state the same fact and disagree"
+                % (left_path.name, left_key, left, right_path.name, right_key, right)
+            )
+
+    # The motion-vector range is stated in full pixels and consumed in quarter
+    # pixels, so the fractional precision has to be the one the asset declares.
+    if scalar_int(constants, "mv_fractional_bits") != scalar_int(mc_asset, "phase_denominator").bit_length() - 1:
+        errors.append("constants.toml mv_fractional_bits does not match the declared phase denominator")
+
+    # The intra asset states its interpolation scale, its rounding bias, and its
+    # four angles. The angles are geometry, not taste: at 45 degrees the
+    # projection advances exactly one reference sample per row, so the diagonal
+    # angles are the denominator itself, and the two shallow angles have to fall
+    # strictly inside that. Checked here because no Python gate replays intra
+    # prediction, which would otherwise leave all six as unverified prose.
+    intra = V1 / "intra.toml"
+    angular_denominator = scalar_int(intra, "angular_denominator")
+    if angular_denominator <= 0 or angular_denominator & (angular_denominator - 1):
+        errors.append("intra.toml angular_denominator is not a positive power of two")
+    if scalar_int(intra, "angular_rounding_offset") * 2 != angular_denominator:
+        errors.append("intra.toml angular_rounding_offset is not half of the angular scale")
+    if scalar_int(intra, "unavailable_fallback") != 128:
+        errors.append("intra.toml unavailable_fallback is not the mid-grey 8-bit substitute")
+    if scalar_int(intra, "d45") != angular_denominator:
+        errors.append("intra.toml d45 must advance one reference sample per row")
+    if scalar_int(intra, "d135") != -angular_denominator:
+        errors.append("intra.toml d135 must be the negative of d45")
+    for shallow in ("d117", "d153"):
+        value = scalar_int(intra, shallow)
+        if not -angular_denominator < value < 0:
+            errors.append("intra.toml %s is not a shallow negative angle" % shallow)
+    if len(array(intra, "modes")) != 8:
+        errors.append("intra.toml must declare the eight version-one intra modes")
+
+    # The motion asset states one scaling scheme several ways: a filter
+    # denominator, a per-stage shift, and the rounding bias that goes with each
+    # shift. The interpolation vectors cannot police them, because every
+    # committed case uses a small motion vector and a one-off rounding bias
+    # usually rounds to the same sample. So the relations between them are
+    # checked directly: each is a fact the others already imply.
+    mc = V1 / "mc.toml"
+    filter_denominator = scalar_int(mc, "filter_denominator")
+    single_shift = scalar_int(mc, "single_stage_shift")
+    two_shift = scalar_int(mc, "two_stage_shift")
+    if filter_denominator != 1 << single_shift:
+        errors.append("mc.toml filter_denominator is not two to the single_stage_shift")
+    if scalar_int(mc, "single_stage_rounding") != 1 << (single_shift - 1):
+        errors.append("mc.toml single_stage_rounding is not half of the single-stage scale")
+    if two_shift != 2 * single_shift:
+        errors.append("mc.toml two_stage_shift is not two single stages")
+    if scalar_int(mc, "two_stage_rounding") != 1 << (two_shift - 1):
+        errors.append("mc.toml two_stage_rounding is not half of the two-stage scale")
+    if scalar_int(mc, "phase_denominator") != len(array(mc, "phase_numerators")):
+        errors.append("mc.toml phase_denominator disagrees with the enumerated luma phases")
+    if scalar_int(mc, "chroma_phase_denominator") != len(array(mc, "chroma_phase_numerators")):
+        errors.append("mc.toml chroma_phase_denominator disagrees with the enumerated chroma phases")
+    if len(array(mc, "filter_taps")) != 6 or sum(array(mc, "filter_taps")) != filter_denominator:
+        errors.append("mc.toml filter_taps must be six taps summing to the filter denominator")
+
     for size in (4, 8, 16, 32):
         if array(V1 / "transforms.toml", "n%d" % size) != expected_matrix(size):
             errors.append("transforms.toml n%d differs from the reviewed derivation" % size)
@@ -243,12 +447,18 @@ def main():
         return mc_blend(half, next_integer, phase - half_phase, half_phase)
 
     def mc_vector(source, width, height, block_x, block_y, block_size, mv, denominator):
-        taps = [1, -5, 20, 20, -5, 1]
+        # Taken from the asset, not restated. A literal copy here would agree
+        # with the Rust's literals and with nothing else, which is exactly the
+        # drift this checker exists to catch.
+        taps = array(V1 / "mc.toml", "filter_taps")
+        scale = scalar_int(V1 / "mc.toml", "filter_denominator")
+        rounding = scalar_int(V1 / "mc.toml", "two_stage_rounding")
+        shift = scalar_int(V1 / "mc.toml", "two_stage_shift")
 
         def horizontal(x, y, phase):
-            integer = mc_sample(source, width, height, x, y) * 32
+            integer = mc_sample(source, width, height, x, y) * scale
             half = sum(tap * mc_sample(source, width, height, x + index - 2, y) for index, tap in enumerate(taps))
-            following = mc_sample(source, width, height, x + 1, y) * 32
+            following = mc_sample(source, width, height, x + 1, y) * scale
             return mc_phase(integer, half, following, phase, denominator)
 
         x_integer, x_phase = divmod(mv[0], denominator)
@@ -259,13 +469,13 @@ def main():
                 x = block_x + column + x_integer
                 y = block_y + row + y_integer
                 if y_phase == 0:
-                    scaled = horizontal(x, y, x_phase) * 32
+                    scaled = horizontal(x, y, x_phase) * scale
                 else:
                     half = sum(tap * horizontal(x, y + index - 2, x_phase) for index, tap in enumerate(taps))
-                    integer = horizontal(x, y, x_phase) * 32
-                    following = horizontal(x, y + 1, x_phase) * 32
+                    integer = horizontal(x, y, x_phase) * scale
+                    following = horizontal(x, y + 1, x_phase) * scale
                     scaled = mc_phase(integer, half, following, y_phase, denominator)
-                output.append(max(0, min(255, (scaled + 512) >> 10)))
+                output.append(max(0, min(255, (scaled + rounding) >> shift)))
         return output
 
     try:
@@ -285,7 +495,11 @@ def main():
         if 'format = "key-frame-mc-vectors-v1"' not in mc_text or len(cases) != 24:
             errors.append("mc-vectors.toml must contain the 24 reviewed luma/chroma phase cases")
         for name, scale, mv_text, expected_text in cases:
-            denominator = 4 if scale == "luma" else 8
+            denominator = (
+                scalar_int(V1 / "mc.toml", "phase_denominator")
+                if scale == "luma"
+                else scalar_int(V1 / "mc.toml", "chroma_phase_denominator")
+            )
             expected = mc_vector(
                 source,
                 scalar_values["source_width"],

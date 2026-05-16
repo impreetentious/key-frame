@@ -231,3 +231,32 @@ fn trap_mv_out_of_bounds() {
         }
     );
 }
+
+/// The full-pixel search bound is stated once, in quarter-luma units, and it
+/// does not widen on chroma.
+///
+/// A motion vector is in quarter-luma units on every plane, so the declared
+/// ±64-pixel bound is ±256 everywhere. Converting it through the plane's own
+/// phase denominator instead would double the legal range on chroma — a change
+/// no committed vector catches, because every one of them uses a small motion
+/// vector well inside either bound.
+#[test]
+fn the_full_pixel_bound_does_not_widen_on_chroma() {
+    let plane = Plane::filled(320, 320, 0).unwrap();
+    let far = MotionVector {
+        x_q4: 4000,
+        y_q4: 4000,
+    };
+    // Placed centrally so the edge extension, not the frame border, is what
+    // the clamp has to answer for.
+    let luma = clamp_motion_vector(&plane, 128, 128, 8, far, PlaneScale::Luma).unwrap();
+    let chroma = clamp_motion_vector(&plane, 128, 128, 8, far, PlaneScale::Chroma420).unwrap();
+    assert!(
+        luma.x_q4 <= 256 && luma.y_q4 <= 256,
+        "luma clamp exceeded the declared bound: {luma:?}"
+    );
+    assert!(
+        chroma.x_q4 <= 256 && chroma.y_q4 <= 256,
+        "chroma clamp exceeded the declared bound: {chroma:?}"
+    );
+}
