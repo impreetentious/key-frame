@@ -35,6 +35,37 @@ def scalar_int(path, key):
     return int(match.group(1))
 
 
+def scalar_text(path, key):
+    """Reads a declared scalar that may be a quoted formula rather than a number."""
+    text = path.read_text(encoding="utf-8")
+    match = re.search(r'^%s\s*=\s*"?([^"\n]+?)"?\s*$' % re.escape(key), text, re.MULTILINE)
+    if not match:
+        raise AssertionError("%s: missing scalar %s" % (path, key))
+    return match.group(1).strip()
+
+
+def declared_shift(key, size):
+    """Evaluates a declared stage shift for one block size.
+
+    The shifts are the asset's own statement of how the transform is scaled.
+    Restating their values here would make this checker agree with a copy of
+    the numbers rather than with the specification, which is the failure this
+    function exists to prevent, so the declared formula is evaluated instead.
+    Only the three shapes the asset actually uses are accepted.
+    """
+    formula = scalar_text(V1 / "transforms.toml", key).replace(" ", "")
+    log2_side = size.bit_length() - 1
+    if re.fullmatch(r"-?\d+", formula):
+        return int(formula)
+    match = re.fullmatch(r"log2\(N\)\+(\d+)", formula)
+    if match:
+        return log2_side + int(match.group(1))
+    match = re.fullmatch(r"(\d+)-log2\(N\)", formula)
+    if match:
+        return int(match.group(1)) - log2_side
+    raise AssertionError("transforms.toml: unevaluatable shift formula for %s: %s" % (key, formula))
+
+
 def expected_matrix(size):
     result = []
     for frequency in range(size):
@@ -97,6 +128,14 @@ def main():
         errors.append("transforms.toml dc_scale differs from the reviewed derivation")
     if scalar_int(V1 / "transforms.toml", "coefficient_scale_bits") != 7:
         errors.append("transforms.toml coefficient_scale_bits differs from the reviewed derivation")
+    if scalar_int(V1 / "transforms.toml", "post_inverse_min") != -32768:
+        errors.append("transforms.toml post_inverse_min differs from the reviewed derivation")
+    if scalar_int(V1 / "transforms.toml", "post_inverse_max") != 32767:
+        errors.append("transforms.toml post_inverse_max differs from the reviewed derivation")
+    # The first inverse stage exists to undo the matrix scale, so these two
+    # declarations state one fact twice and must agree.
+    if declared_shift("inverse_shift1", 4) != scalar_int(V1 / "transforms.toml", "coefficient_scale_bits"):
+        errors.append("transforms.toml inverse_shift1 does not undo coefficient_scale_bits")
 
     for size in (4, 8, 16, 32):
         if array(V1 / "transforms.toml", "n%d" % size) != expected_matrix(size):
@@ -115,13 +154,17 @@ def main():
         for fy in range(size):
             for x in range(size):
                 total = sum(coefficients[fy * size + fx] * matrix[fx * size + x] for fx in range(size))
-                horizontal[fy * size + x] = max(-(1 << 31), min((1 << 31) - 1, rounded_shift(total, 7)))
-        shift = {4: 11, 8: 10, 16: 9, 32: 8}[size]
+                horizontal[fy * size + x] = max(
+                    -(1 << 31), min((1 << 31) - 1, rounded_shift(total, declared_shift("inverse_shift1", size)))
+                )
+        shift = declared_shift("inverse_shift2", size)
+        floor = scalar_int(V1 / "transforms.toml", "post_inverse_min")
+        ceiling = scalar_int(V1 / "transforms.toml", "post_inverse_max")
         output = [0] * (size * size)
         for y in range(size):
             for x in range(size):
                 total = sum(horizontal[fy * size + x] * matrix[fy * size + y] for fy in range(size))
-                output[y * size + x] = max(-32768, min(32767, rounded_shift(total, shift)))
+                output[y * size + x] = max(floor, min(ceiling, rounded_shift(total, shift)))
         return output
 
     vector_text = (V1 / "transform-vectors.toml").read_text(encoding="utf-8")

@@ -25,15 +25,42 @@ impl TransformSize {
         }
     }
 
+    /// Base-two logarithm of the side length.
+    #[must_use]
+    pub const fn log2_side(self) -> u8 {
+        match self {
+            Self::N4 => 2,
+            Self::N8 => 3,
+            Self::N16 => 4,
+            Self::N32 => 5,
+        }
+    }
+
+    /// Encoder-side first forward-stage shift.
+    #[must_use]
+    pub const fn forward_first_shift(self) -> u8 {
+        self.log2_side() + 1
+    }
+
+    /// Encoder-side second forward-stage shift.
+    #[must_use]
+    pub const fn forward_second_shift(self) -> u8 {
+        self.log2_side() + 8
+    }
+
+    /// Decoder-normative first inverse-stage shift.
+    ///
+    /// Constant across sizes: the first stage undoes exactly the matrix's own
+    /// scale, which `transforms.toml` fixes at `coefficient_scale_bits`.
+    #[must_use]
+    pub const fn inverse_first_shift(self) -> u8 {
+        7
+    }
+
     /// Decoder-normative second inverse-stage shift.
     #[must_use]
     pub const fn inverse_second_shift(self) -> u8 {
-        match self {
-            Self::N4 => 11,
-            Self::N8 => 10,
-            Self::N16 => 9,
-            Self::N32 => 8,
-        }
+        13 - self.log2_side()
     }
 
     pub(crate) fn matrix(self) -> &'static [i16] {

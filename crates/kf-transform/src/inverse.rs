@@ -25,7 +25,7 @@ pub fn inverse_transform(
                 let basis = i64::from(matrix[frequency_x * side + sample_x]);
                 sum = sum.saturating_add(coefficient.saturating_mul(basis));
             }
-            let rounded = rounded_shift_i64(sum, 7);
+            let rounded = rounded_shift_i64(sum, size.inverse_first_shift());
             horizontal[frequency_y * side + sample_x] =
                 i32::try_from(rounded.clamp(i64::from(i32::MIN), i64::from(i32::MAX)))
                     .expect("invariant: first inverse stage is clamped to i32");

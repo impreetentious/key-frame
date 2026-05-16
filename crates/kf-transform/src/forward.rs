@@ -16,18 +16,8 @@ pub fn forward_transform(
         });
     }
     let matrix = size.matrix();
-    let shift1 = match size {
-        TransformSize::N4 => 3,
-        TransformSize::N8 => 4,
-        TransformSize::N16 => 5,
-        TransformSize::N32 => 6,
-    };
-    let shift2 = match size {
-        TransformSize::N4 => 10,
-        TransformSize::N8 => 11,
-        TransformSize::N16 => 12,
-        TransformSize::N32 => 13,
-    };
+    let shift1 = size.forward_first_shift();
+    let shift2 = size.forward_second_shift();
 
     let mut horizontal = vec![0_i32; expected];
     for sample_y in 0..side {

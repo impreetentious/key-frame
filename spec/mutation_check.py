@@ -67,6 +67,20 @@ def bump_scalar(key):
     return apply
 
 
+def bump_shift_formula(key):
+    """Changes the constant inside a declared `K-log2(N)` stage shift."""
+
+    def apply(text):
+        match = re.search(r'^%s\s*=\s*"(\d+)-log2\(N\)"\s*$' % re.escape(key), text, re.MULTILINE)
+        if not match:
+            raise SystemExit("mutation target %s not found" % key)
+        value = int(match.group(1)) + 1
+        start, end = match.span(1)
+        return text[:start] + str(value) + text[end:]
+
+    return apply
+
+
 def bump_first_case_expectation(text):
     """Changes one expected sample of the first motion-compensation case."""
     match = re.search(r"^expected = \[\s*(\d+)", text, re.MULTILINE)
@@ -99,6 +113,9 @@ CASES = [
     Case("constants.toml", "the largest declared picture width", bump_scalar("max_width"), False),
     Case("constants.toml", "the declared probability clamp", bump_scalar("probability_max"), False),
     Case("transforms.toml", "one transform scale constant", bump_scalar("dc_scale"), True),
+    Case("transforms.toml", "the first inverse stage shift", bump_scalar("inverse_shift1"), True),
+    Case("transforms.toml", "the second inverse stage shift", bump_shift_formula("inverse_shift2"), True),
+    Case("transforms.toml", "the final reconstruction clamp", bump_scalar("post_inverse_max"), True),
     Case("quant.toml", "one quantizer scale entry", bump_first_in_array("qscale"), True),
     Case("costs.toml", "one modeled-entropy cost entry", bump_first_in_array("cost0_q16"), True),
     Case("contexts.toml", "the closed context count", bump_scalar("count"), True),

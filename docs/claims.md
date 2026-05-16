@@ -35,6 +35,7 @@ proves on every change, and this table is the index.
 | Decoder campaigns with zero panics or hangs | `scripts/ci/fuzz-gate.sh`; the nightly budget is checked against the declared one by `crates/kf-fuzz/tests/campaign.rs` |
 | Any frame seekable to the same image linear decoding produces | `scripts/ci/seek-gate.sh` |
 | The specification and the implementation cannot drift apart silently | `scripts/ci/spec-check.sh`: the normative document is regenerated and diffed, `spec/check_assets.py` re-derives the tables, and `spec/mutation_check.py` mutates each asset and requires a rejection |
+| Every declared scalar is load-bearing, not decorative normative text — including the stage shifts and the reconstruction clamp | `crates/kf-transform/tests/declared_shifts.rs` evaluates the shift formulas the asset declares and compares them to the shifts the code uses; `spec/check_assets.py` and `crates/kf-ref/src/transform.rs` each read the same declarations through their own parser rather than restating the numbers, so no two of the three agree except by agreeing with the specification, and `spec/mutation_check.py` rejects a change to any of them |
 
 ## Integer-only signal path
 

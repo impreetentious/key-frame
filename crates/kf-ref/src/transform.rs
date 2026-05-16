@@ -21,6 +21,8 @@ pub(crate) fn inverse_levels(
 
 fn inverse(coefficients: &[i32], size: usize) -> Vec<i32> {
     let matrix = matrix(size);
+    let first_shift = declared_shift("inverse_shift1", size);
+    let second_shift = declared_shift("inverse_shift2", size);
     let mut horizontal = vec![0_i32; size * size];
     for fy in 0..size {
         for x in 0..size {
@@ -28,17 +30,10 @@ fn inverse(coefficients: &[i32], size: usize) -> Vec<i32> {
             for fx in 0..size {
                 total += i64::from(coefficients[fy * size + fx]) * i64::from(matrix[fx * size + x]);
             }
-            horizontal[fy * size + x] = i32::try_from(rounded_shift(total, 7))
+            horizontal[fy * size + x] = i32::try_from(rounded_shift(total, first_shift))
                 .expect("invariant: zero reference stage fits i32");
         }
     }
-    let shift = match size {
-        4 => 11,
-        8 => 10,
-        16 => 9,
-        32 => 8,
-        _ => panic!("invariant: reference transform size is one of 4/8/16/32"),
-    };
     let mut output = vec![0_i32; size * size];
     for y in 0..size {
         for x in 0..size {
@@ -46,11 +41,66 @@ fn inverse(coefficients: &[i32], size: usize) -> Vec<i32> {
             for fy in 0..size {
                 total += i64::from(horizontal[fy * size + x]) * i64::from(matrix[fy * size + y]);
             }
-            output[y * size + x] = i32::try_from(rounded_shift(total, shift).clamp(-32768, 32767))
-                .expect("invariant: reference residual is clamped to i16 domain");
+            output[y * size + x] =
+                i32::try_from(rounded_shift(total, second_shift).clamp(-32768, 32767))
+                    .expect("invariant: reference residual is clamped to i16 domain");
         }
     }
     output
+}
+
+/// Reads a stage shift out of the frozen asset and evaluates what it declares.
+///
+/// This decoder is meant to agree with the production one only by agreeing with
+/// the specification, so it takes the shifts from the same declaration rather
+/// than from a table of its own. A table here would agree with `kf-transform`'s
+/// literals and with nothing else, which is precisely the failure two decoders
+/// exist to catch: both would keep the old scaling after a specification edit
+/// and their agreement would prove nothing.
+///
+/// The parser is deliberately this crate's own. Independence means not sharing
+/// the implementation, not refusing to read the same normative bytes.
+fn declared_shift(key: &str, size: usize) -> u8 {
+    let asset = V1_ASSETS
+        .iter()
+        .find(|asset| asset.name == "transforms.toml")
+        .expect("invariant: kf-spec exposes transforms.toml");
+    let prefix = format!("{key} = ");
+    let declaration = asset
+        .contents
+        .lines()
+        .find_map(|line| line.strip_prefix(&prefix))
+        .expect("invariant: checked transform asset declares every stage shift")
+        .trim()
+        .replace(['"', ' '], "");
+
+    let log2_side = size
+        .checked_ilog2()
+        .expect("invariant: transform side is a positive power of two");
+    let log2_side = u8::try_from(log2_side).expect("invariant: transform side is small");
+    assert_eq!(
+        1_usize << log2_side,
+        size,
+        "invariant: transform side is a power of two"
+    );
+
+    if let Ok(literal) = declaration.parse::<u8>() {
+        literal
+    } else if let Some(addend) = declaration.strip_prefix("log2(N)+") {
+        log2_side
+            + addend
+                .parse::<u8>()
+                .expect("invariant: checked shift addend is a small integer")
+    } else if let Some((minuend, subtrahend)) = declaration.split_once('-')
+        && subtrahend == "log2(N)"
+    {
+        minuend
+            .parse::<u8>()
+            .expect("invariant: checked shift minuend is a small integer")
+            - log2_side
+    } else {
+        panic!("invariant: checked transform asset uses a known shift form: {declaration}")
+    }
 }
 
 fn matrix(size: usize) -> Vec<i16> {
