@@ -63,6 +63,15 @@ impl ReferenceElement {
             Self::LevelSign => "nonzero_sign",
         }
     }
+
+    /// This element's slot in a tally over the closed set.
+    const fn index(self) -> usize {
+        // cast: a discriminant of a fourteen-variant enum into an array index.
+        // The set is closed by `ALL`, so the value is a small non-negative
+        // integer on every target; `usize::from` does not exist for an enum,
+        // and this is the one place the conversion happens.
+        self as usize
+    }
 }
 
 /// Context ids and elements observed while reading one or more payloads.
@@ -83,6 +92,9 @@ impl ReferenceCoverage {
     }
 
     pub(crate) const fn record_context(&mut self, id: u16) {
+        // cast: a context id widened to an index. `u16` fits `usize` on every
+        // target this repository supports, and the bounds check below is what
+        // keeps an out-of-range id out of the array rather than the conversion.
         let index = id as usize;
         if index < self.contexts.len() {
             self.contexts[index] = true;
@@ -90,7 +102,7 @@ impl ReferenceCoverage {
     }
 
     pub(crate) const fn record_element(&mut self, element: ReferenceElement) {
-        self.elements[element as usize] = true;
+        self.elements[element.index()] = true;
     }
 
     /// Unions another tally into this one.
@@ -112,7 +124,7 @@ impl ReferenceCoverage {
     /// Whether an element was read.
     #[must_use]
     pub const fn has_element(&self, element: ReferenceElement) -> bool {
-        self.elements[element as usize]
+        self.elements[element.index()]
     }
 
     /// Context ids read, in ascending order.

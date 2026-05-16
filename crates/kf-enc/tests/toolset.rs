@@ -52,7 +52,7 @@ fn panning_clip(frames: usize) -> Vec<Frame> {
                     total += u32::from(field[(y + dy - 1) * 256 + (x + dx - 1)]);
                 }
             }
-            smooth[y * 256 + x] = (total / 9) as u8;
+            smooth[y * 256 + x] = u8::try_from(total / 9).unwrap();
         }
     }
 
@@ -61,8 +61,8 @@ fn panning_clip(frames: usize) -> Vec<Frame> {
             let mut frame = Frame::filled_420(64, 64, 0).unwrap();
             for y in 0..64_u32 {
                 for x in 0..64_u32 {
-                    let source_x = (x as usize + index * 3) % 200;
-                    let source_y = (y as usize + index * 2) % 200;
+                    let source_x = (usize::try_from(x).unwrap() + index * 3) % 200;
+                    let source_y = (usize::try_from(y).unwrap() + index * 2) % 200;
                     frame
                         .y
                         .set(x, y, smooth[source_y * 256 + source_x])

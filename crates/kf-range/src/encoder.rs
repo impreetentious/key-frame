@@ -107,6 +107,11 @@ impl RangeEncoder {
     }
 
     fn shift_low(&mut self, finalization: bool) {
+        // cast: deliberate truncation, and the load-bearing one in this file.
+        // `low` is a 33-bit accumulator: the low thirty-two bits are the value
+        // being shifted out and the thirty-third is the delayed carry, read
+        // separately on the next line. `try_from` here would reject exactly the
+        // case the carry logic exists to handle.
         let low32 = self.low as u32;
         let carry = self.low >> 32;
         assert!(

@@ -73,7 +73,7 @@ fn neutral_frame_is_canonical_and_conserves_emission_buckets() {
     assert_eq!(decoded[0], reference);
     assert_eq!(
         accounting_sum(&encoded),
-        encoded.frames[0].payload_len as u64
+        u64::try_from(encoded.frames[0].payload_len).unwrap()
     );
     assert_probe_accounting(&encoded);
 }
@@ -102,7 +102,10 @@ fn gradient_round_trip_is_deterministic_at_multiple_qps() {
             .unwrap();
         assert_eq!(decoded[0], reference);
         assert_eq!((decoded[0].width(), decoded[0].height()), (66, 64));
-        assert_eq!(accounting_sum(&first), first.frames[0].payload_len as u64);
+        assert_eq!(
+            accounting_sum(&first),
+            u64::try_from(first.frames[0].payload_len).unwrap()
+        );
         assert_probe_accounting(&first);
         if qp == 0 {
             assert!(
@@ -149,7 +152,7 @@ fn gray_and_noise_match_both_decoders_at_five_qps() {
             assert_eq!(fast, reference);
             assert_eq!(
                 accounting_sum(&encoded),
-                encoded.frames[0].payload_len as u64
+                u64::try_from(encoded.frames[0].payload_len).unwrap()
             );
             assert_probe_accounting(&encoded);
         }

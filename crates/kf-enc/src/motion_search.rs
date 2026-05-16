@@ -245,7 +245,11 @@ mod tests {
         for row in 0..8 {
             for column in 0..8 {
                 source
-                    .set(16 + column, 16 + row, shifted[(row * 8 + column) as usize])
+                    .set(
+                        16 + column,
+                        16 + row,
+                        shifted[usize::try_from(row * 8 + column).unwrap()],
+                    )
                     .unwrap();
             }
         }
@@ -279,7 +283,11 @@ mod tests {
         for row in 0..8 {
             for column in 0..8 {
                 source
-                    .set(24 + column, 24 + row, shifted[(row * 8 + column) as usize])
+                    .set(
+                        24 + column,
+                        24 + row,
+                        shifted[usize::try_from(row * 8 + column).unwrap()],
+                    )
                     .unwrap();
             }
         }

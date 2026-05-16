@@ -2,6 +2,7 @@
 
 //! Deterministic decoder campaigns for preflight smoke and nightly budgets.
 
+use std::hint;
 use std::panic::{self, AssertUnwindSafe};
 
 use kf_core::{Xoshiro256PlusPlus, crc32c};
@@ -57,6 +58,30 @@ impl FuzzTarget {
 pub struct CampaignReport {
     pub target: FuzzTarget,
     pub iterations: u32,
+}
+
+/// Whether this build stops on integer overflow instead of wrapping.
+///
+/// The campaigns are where novel data meets the decoders at volume, and they
+/// run `--release`. Cargo leaves overflow checking off there by default, which
+/// would make the largest verification budget in the repository the one place
+/// a wrapping addition produces a wrong sample in silence rather than a named
+/// panic with a line number.
+///
+/// This asks the running binary rather than reading a manifest, because the
+/// manifest is a claim and this is the behaviour. `black_box` on both operands
+/// keeps the compiler from settling the sum at compile time, where an overflow
+/// is a build error rather than the runtime event under test.
+#[must_use]
+pub fn overflow_is_checked() -> bool {
+    let previous = panic::take_hook();
+    panic::set_hook(Box::new(|_| {}));
+    let outcome = panic::catch_unwind(|| {
+        let ceiling = hint::black_box(u32::MAX);
+        hint::black_box(ceiling + hint::black_box(1))
+    });
+    panic::set_hook(previous);
+    outcome.is_err()
 }
 
 /// Runs `iterations` probes against one target.

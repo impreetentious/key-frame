@@ -48,6 +48,8 @@ proves on every change, and this table is the index.
 | --- | --- |
 | No floating point, unordered iteration, ambient clocks, filesystem, or threads in any codec crate | `scripts/ci/forbidden-grep.sh`, fail-closed: every crate under `crates/` is scanned unless it is named as a host crate, so a new codec crate is covered the day it appears |
 | Floating point confined to the tools and the interface | the same scan, plus `disallowed_types = "deny"` in the workspace lint table |
+| Every numeric cast in a codec crate either cannot lose anything or carries the rule that says what it discards | the same scan reads the comment block directly above each `as` cast and fails unless it begins `cast:`. Four survive the rule, and the load-bearing one is the range encoder's delayed carry in `crates/kf-range/src/encoder.rs`, where `try_from` would reject exactly the case the carry logic exists to handle. A cast is invisible to both the lint build and the checked-arithmetic release profile, because truncation is not an overflow — it is an answer |
+| Release builds stop on an integer overflow rather than wrapping | `crates/kf-fuzz/tests/campaign.rs` asserts it, and the campaign binary asks `overflow_is_checked()` of itself before its first iteration and refuses to report a clean run from a build that would wrap. The artifact proves the setting, because `cargo test --release` and `cargo run --release` select different profiles and a test elsewhere would be asking the wrong build |
 
 ## The browser
 

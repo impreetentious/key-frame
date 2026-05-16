@@ -90,7 +90,12 @@ impl SyntaxElement {
         Self::ALL.into_iter().find(|element| element.name() == name)
     }
 
+    /// This element's slot in a tally over the closed set.
     const fn index(self) -> usize {
+        // cast: a discriminant of the closed element set into an array index,
+        // the one place this conversion happens. `ALL` fixes the set, so the
+        // value is a small non-negative integer on every target, and
+        // `usize::from` does not exist for an enum and is not const anyway.
         self as usize
     }
 }

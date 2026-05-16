@@ -229,18 +229,73 @@ impl Session {
     }
 }
 
+/// The three planes as the host expects them: tightly packed, display samples
+/// only.
+///
+/// A plane carries its own stride, and a padded plane's backing buffer holds
+/// samples to the right of the picture that were never displayed. Copying the
+/// buffer wholesale would hand the browser those samples as if they were
+/// pixels, and the page would draw a skewed picture from a correct decode.
+/// Frames reaching here are cropped today, so this reads the same bytes it
+/// always did; it reads them from the geometry rather than from the allocation
+/// so that it stays correct if a padded frame ever arrives.
 fn raw_planes(frame: &Frame) -> Vec<u8> {
     let mut bytes =
-        Vec::with_capacity(frame.y.data().len() + frame.cb.data().len() + frame.cr.data().len());
-    bytes.extend_from_slice(frame.y.data());
-    bytes.extend_from_slice(frame.cb.data());
-    bytes.extend_from_slice(frame.cr.data());
+        Vec::with_capacity(packed_len(&frame.y) + packed_len(&frame.cb) + packed_len(&frame.cr));
+    pack_plane(&frame.y, &mut bytes);
+    pack_plane(&frame.cb, &mut bytes);
+    pack_plane(&frame.cr, &mut bytes);
     bytes
+}
+
+fn packed_len(plane: &kf_frame::Plane) -> usize {
+    plane.width() as usize * plane.height() as usize
+}
+
+/// Appends one plane's display samples, row by row, skipping any stride
+/// padding the backing buffer carries.
+fn pack_plane(plane: &kf_frame::Plane, into: &mut Vec<u8>) {
+    let width = plane.width() as usize;
+    let height = plane.height() as usize;
+    let stride = plane.stride() as usize;
+    let data = plane.data();
+    for row in 0..height {
+        let start = row * stride;
+        into.extend_from_slice(&data[start..start + width]);
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{Session, Status};
+
+    /// Padding is outside the picture and outside what the host receives.
+    ///
+    /// The browser is handed raw planes and told only the width and height, so
+    /// a plane whose backing buffer is wider than its picture must still
+    /// produce exactly width×height bytes. Reading the allocation instead of
+    /// the geometry would hand the page never-displayed samples and skew every
+    /// row of the image.
+    #[test]
+    fn stride_padding_never_reaches_the_host() {
+        use kf_frame::Plane;
+        let mut plane = Plane::with_stride(4, 2, 6, 0xEE).unwrap();
+        for row in 0..2 {
+            for x in 0..4 {
+                plane
+                    .set(x, row, 10 + u8::try_from(row * 4 + x).unwrap())
+                    .unwrap();
+            }
+        }
+        let mut packed = Vec::new();
+        super::pack_plane(&plane, &mut packed);
+        assert_eq!(packed, vec![10, 11, 12, 13, 14, 15, 16, 17]);
+        assert_eq!(packed.len(), super::packed_len(&plane));
+        assert!(
+            !packed.contains(&0xEE),
+            "a padding sample reached the host: {packed:?}"
+        );
+    }
 
     /// One oracle-authored keyframe, 64×64, DC intra, no coefficients.
     const ORACLE_STREAM: [u8; 54] = [

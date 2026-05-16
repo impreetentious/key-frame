@@ -69,6 +69,53 @@ scan() {
 scan "floating point in a codec crate" \
   '\b(f32|f64)\b'
 
+# A truncating cast is the one conversion the compiler will not argue with. On
+# a path that reaches a decoded pixel, `as` silently discards the high bits in
+# every profile, debug and release alike, so neither the lint build nor the
+# checked-arithmetic release profile can see it: it is not an overflow, it is an
+# answer.
+#
+# Almost every conversion in this workspace is already `From` or `TryFrom`, so
+# this is not a ban that would be suppressed everywhere within a week. It asks
+# for a rule instead: a numeric `as` cast is allowed where the comment block
+# directly above it begins `cast:` and says why the discarded bits are not
+# wanted. Four casts in the codec perimeter meet that bar today, and the one
+# that truncates on purpose — the range encoder's delayed carry — is the reason
+# the rule is a rule rather than a prohibition.
+unnamed_casts=""
+while IFS= read -r file; do
+  [[ -n "$file" ]] || continue
+  while IFS= read -r hit; do
+    [[ -n "$hit" ]] || continue
+    line="${hit%%:*}"
+    # Walk up through the comment block immediately above the cast. A rule that
+    # has to sit next to the cast is a rule that gets re-read when the cast is
+    # edited; one allowed to drift ten lines away is decoration.
+    named=0
+    probe=$((line - 1))
+    while [[ $probe -ge 1 ]]; do
+      above="$(sed -n "${probe}p" "$file")"
+      [[ "$above" =~ ^[[:space:]]*// ]] || break
+      if [[ "$above" == *"cast:"* ]]; then
+        named=1
+        break
+      fi
+      probe=$((probe - 1))
+    done
+    [[ $named -eq 1 ]] || unnamed_casts+="  $file:$hit"$'\n'
+  done < <(grep -nE '\bas (u8|u16|u32|u64|u128|usize|i8|i16|i32|i64|i128|isize)\b' "$file" \
+    | grep -vE '^[0-9]+:[[:space:]]*(//|/\*|\*)' || true)
+done < <(find "${codec_paths[@]}" -name '*.rs' -type f | sort)
+
+if [[ -n "$unnamed_casts" ]]; then
+  echo "forbidden: numeric cast with no named rule"
+  printf '%s' "$unnamed_casts"
+  echo "  Use From or TryFrom where the conversion cannot lose anything."
+  echo "  Where it can and that is the intent, put a comment block directly above"
+  echo "  the cast that starts 'cast:' and says which bits go and why."
+  status=1
+fi
+
 # There is deliberately no blanket `usize` ban here. Slice indexing needs it,
 # so a repository-wide scan would fire on every buffer access and be
 # suppressed everywhere within a week — and a gate that is always suppressed

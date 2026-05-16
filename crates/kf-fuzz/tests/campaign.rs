@@ -41,3 +41,17 @@ fn the_nightly_budget_is_the_one_the_specification_declares() {
         );
     }
 }
+
+#[test]
+fn this_profile_stops_on_integer_overflow() {
+    // Cheap here, because the test profile checks arithmetic by default. The
+    // load-bearing run is the campaign binary, which asks the same question of
+    // itself before it starts and refuses to report a clean campaign from a
+    // build that would wrap: `cargo test --release` and `cargo run --release`
+    // are different profiles, so the only trustworthy place to ask is inside
+    // the artifact that does the work.
+    assert!(
+        kf_fuzz::overflow_is_checked(),
+        "this build wraps on integer overflow, so a wrapping decoder bug would decode quietly"
+    );
+}

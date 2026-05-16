@@ -47,7 +47,11 @@ specification. Every gate in the repository exists to prove the two agree.
   the same literal frozen assets, so the specification and the implementation
   cannot drift apart silently.
 - Keeps the entire signal path integer-only: no floating point, no unordered
-  iteration, no ambient clocks, no filesystem, no threads.
+  iteration, no ambient clocks, no filesystem, no threads, and no numeric cast
+  that discards bits without a rule written beside it saying which bits and why.
+- Checks integer overflow in release builds too, so the twenty-million-stream
+  campaign, the natural-corpus proof, and the browser module stop on a wrapping
+  addition instead of quietly decoding a wrong sample from one.
 - Decodes in the browser through a WebAssembly module that imports nothing, so
   the artifact a page loads is the same artifact the equality gate decodes every
   committed stream with, byte for byte against the native hashes.
@@ -122,8 +126,9 @@ Node.js for repository checks
 - [`docs/adr/`](docs/adr/) records every architectural decision, the alternatives
   weighed, and the consequences accepted.
 - [`docs/writeups/`](docs/writeups/) is six pieces on why the codec is shaped the
-  way it is: the range coder, the closed loop, freezing a bitstream, fuzzing your
-  own decoder, and how to publish compression numbers honestly.
+  way it is: legibility as a constraint, the range coder, the closed loop,
+  freezing a bitstream, fuzzing your own decoder, and how to publish compression
+  numbers honestly.
 - [`spec/`](spec/) holds the literal assets, their derivation checks, and an
   independent standard-library oracle that authors test vectors without the
   Rust implementation.
@@ -217,4 +222,4 @@ preflight green.
 
 ---
 
-**Version:** v0.13.6
+**Version:** v0.13.7

@@ -18,7 +18,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.13.6"
+version = "0.13.7"
 authors = ["Sidakpreet Singh"]
 edition = "2024"
 license = "MIT"
@@ -43,3 +43,19 @@ unsafe_code = "forbid"
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
 disallowed_types = "deny"
+
+# Release builds check integer arithmetic.
+#
+# The campaigns, the natural-corpus bit-exactness proof, the rate measurements,
+# and the rate-distortion receipts all run `--release`, and they are the only
+# places this repository pushes novel data through the codec at volume: the
+# nightly job alone drives twenty million mutated streams through both decoders.
+# With Cargo's default those are precisely the runs where an overflow wraps
+# silently instead of stopping, so the largest verification budget in the
+# project was the one blind to the failure it exists to find.
+#
+# An overflow anywhere in the signal path is a bit-exactness bug, not a
+# performance trade, and this is not a performance project. `kf-fuzz` proves
+# the setting is in effect rather than trusting this line.
+[profile.release]
+overflow-checks = true
