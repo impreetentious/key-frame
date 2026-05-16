@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   type Campaign,
   type Curve,
+  type RateControlClip,
   type RatePoint,
   bdRate,
   clipsOf,
@@ -124,6 +125,8 @@ export function Curves() {
           metric={metric}
         />
       ))}
+
+      <RateControlTable clips={campaign.rateControl} />
 
       <p className="disclaimer">
         Encoder <code>v{campaign.encoderVersion}</code>, configuration{" "}
@@ -339,6 +342,59 @@ function RdChart({ curves, metric }: { curves: Curve[]; metric: Metric }) {
         ))}
       </ul>
     </div>
+  );
+}
+
+/// How close the average-bitrate controller lands to what it was asked for.
+///
+/// Kept in its own table, deliberately away from the curves above. Three
+/// average-bitrate points are not a rate–distortion curve: the quality at each
+/// one is an outcome of the controller rather than a setting, so fitting a
+/// curve through them would produce something that looks like a rate–distortion
+/// result and is a different measurement entirely. The receipt keeps them in a
+/// different shape for the same reason, so nothing that reads a curve can pick
+/// them up by accident.
+function RateControlTable({ clips }: { clips: RateControlClip[] }) {
+  if (clips.length === 0) return null;
+  return (
+    <article className="finding open">
+      <h3>Average-bitrate accuracy</h3>
+      <table className="ablations">
+        <caption>
+          What the rate controller delivered against what it was asked for. This is a
+          single-pass leaky bucket, so the figure is a steady-state one: it is measured over
+          more frames than the curves above use, because a window shorter than the
+          controller&apos;s convergence time measures the transient instead of the controller.
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Clip</th>
+            <th scope="col">Target</th>
+            <th scope="col">Achieved</th>
+            <th scope="col">Error</th>
+            <th scope="col">PSNR-Y</th>
+          </tr>
+        </thead>
+        <tbody>
+          {clips.flatMap((clip) =>
+            clip.targets.map((target) => (
+              <tr key={`${clip.clip}-${target.targetBps}`}>
+                <th scope="row">
+                  {clip.clip} <span className="quiet">({clip.frames} frames)</span>
+                </th>
+                <td>{(target.targetBps / 1000).toFixed(1)} kbps</td>
+                <td>{(target.achievedBps / 1000).toFixed(1)} kbps</td>
+                <td className={Math.abs(target.errorPercent) <= 5 ? "negative" : undefined}>
+                  {target.errorPercent >= 0 ? "+" : ""}
+                  {target.errorPercent.toFixed(2)}%
+                </td>
+                <td>{target.psnrY.toFixed(2)} dB</td>
+              </tr>
+            )),
+          )}
+        </tbody>
+      </table>
+    </article>
   );
 }
 

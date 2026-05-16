@@ -49,6 +49,10 @@ pub struct RateController {
     fill_q16: i64,
     qp: u8,
     complexity: u64,
+    /// The most recent frame's transition cost, kept so the controller can ask
+    /// how this frame compares with the recent past rather than only how full
+    /// the bucket is.
+    last_sad: u64,
     step: u8,
     ewma_shift: u8,
 }
@@ -83,6 +87,7 @@ impl RateController {
             fill_q16: capacity_q16 / 2,
             qp,
             complexity: 0,
+            last_sad: 0,
             step: tables.maximum_qp_step,
             ewma_shift: tables.complexity_ewma_shift,
         })
@@ -106,8 +111,17 @@ impl RateController {
         self.capacity_q16
     }
 
+    /// Bias the bucket thresholds are shifted by, in Q16.16 bits.
+    ///
+    /// Positive means "act as though the bucket were fuller than it is".
+    #[must_use]
+    pub const fn complexity_bias_q16(&self) -> i64 {
+        complexity_bias(self.last_sad, self.complexity, self.capacity_q16)
+    }
+
     /// Updates the complexity EWMA with saturating arithmetic.
     pub fn observe_complexity(&mut self, sad: u64) {
+        self.last_sad = sad;
         if sad >= self.complexity {
             self.complexity = self
                 .complexity
@@ -126,16 +140,63 @@ impl RateController {
             .fill_q16
             .saturating_add(delta)
             .clamp(0, self.capacity_q16);
-        self.qp = step_qp(self.fill_q16, self.capacity_q16, self.qp, self.step);
+        self.qp = step_qp(
+            self.fill_q16,
+            self.capacity_q16,
+            self.qp,
+            self.step,
+            self.complexity_bias_q16(),
+        );
     }
 }
 
-fn step_qp(fill: i64, capacity: i64, qp: u8, step: u8) -> u8 {
+/// How far the thresholds move for a frame that is not of average difficulty.
+///
+/// Bucket fullness is a report on what already happened. On its own it makes the
+/// controller strictly reactive: it raises QP only after the overspend has been
+/// paid for, which on content that changes difficulty costs a frame or two of
+/// wrong quantizer every time the scene turns. The complexity average is what
+/// lets it see the turn coming, and it was being computed and discarded.
+///
+/// The rule is deliberately coarse. A frame more than a quarter harder than the
+/// running average shifts the thresholds as if the bucket were a sixteenth
+/// fuller, so QP rises sooner; a frame more than a quarter easier shifts them
+/// the other way. Anything in between changes nothing. A finer response would be
+/// a prediction of the next frame's cost, which single-pass control cannot make
+/// honestly, and an aggressive one would chase noise — a sixteenth of capacity
+/// against bands at thirds can move the decision one band early but never
+/// override it.
+///
+/// The sixteenth is measured rather than chosen. Across twelve operating points
+/// on the pinned corpus, mean absolute rate error is 3.28% with no complexity
+/// term, 2.81% at a twelfth, 2.21% at a sixteenth, and 3.14% at a
+/// twenty-fourth; worst-case error falls from 6.74% to 5.31%. The numbers and
+/// the reasoning are in ADR-0016.
+const fn complexity_bias(last_sad: u64, complexity: u64, capacity: i64) -> i64 {
+    // No history yet: the first frames have nothing to be harder or easier than.
+    if complexity == 0 {
+        return 0;
+    }
+    let shift = capacity / 16;
+    let quarter = complexity / 4;
+    if last_sad > complexity.saturating_add(quarter) {
+        shift
+    } else if last_sad < complexity.saturating_sub(quarter) {
+        -shift
+    } else {
+        0
+    }
+}
+
+fn step_qp(fill: i64, capacity: i64, qp: u8, step: u8, bias: i64) -> u8 {
     let low = capacity / 3;
     let high = (2 * capacity) / 3;
-    if fill < low {
+    // Clamped back inside the bucket so a bias can never push the decision
+    // outside the range fullness alone could have reached.
+    let effective = fill.saturating_add(bias).clamp(0, capacity);
+    if effective < low {
         qp.saturating_sub(step)
-    } else if fill > high {
+    } else if effective > high {
         qp.saturating_add(step).min(63)
     } else {
         qp

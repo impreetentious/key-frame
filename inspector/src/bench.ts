@@ -30,11 +30,29 @@ export interface Curve {
   points: RatePoint[];
 }
 
+export interface AbrTarget {
+  targetBps: number;
+  achievedBps: number;
+  errorPercent: number;
+  psnrY: number;
+}
+
+export interface RateControlClip {
+  clip: string;
+  frames: number;
+  targets: AbrTarget[];
+}
+
 export interface Campaign {
   encoderVersion: string;
   configSha256: string;
   qpLadder: number[];
   curves: Curve[];
+  /// Average-bitrate accuracy, kept in its own shape. These are deliberately
+  /// not rate-quality points: the quality at an average-bitrate target is an
+  /// outcome rather than a setting, so three of them are not a curve and the
+  /// page never draws them as one.
+  rateControl: RateControlClip[];
 }
 
 /// Reads a campaign receipt, refusing anything that is not one.
@@ -54,6 +72,7 @@ export function parseCampaign(data: unknown): Campaign {
     encoderVersion: String(root.encoder_version ?? "unknown"),
     configSha256: String(root.config_sha256 ?? ""),
     qpLadder: Array.isArray(settings.qp_ladder) ? settings.qp_ladder.map(Number) : [],
+    rateControl: parseRateControl(root.rate_control),
     curves: rawCurves.map((entry) => {
       const curve = entry as Record<string, unknown>;
       const points = curve.points;
@@ -79,6 +98,28 @@ export function parseCampaign(data: unknown): Campaign {
       };
     }),
   };
+}
+
+function parseRateControl(value: unknown): RateControlClip[] {
+  const clips = (value as Record<string, unknown> | undefined)?.clips;
+  if (!Array.isArray(clips)) return [];
+  return clips.map((entry) => {
+    const clip = entry as Record<string, unknown>;
+    const targets = Array.isArray(clip.targets) ? clip.targets : [];
+    return {
+      clip: String(clip.clip ?? "unnamed"),
+      frames: Number(clip.frames ?? 0),
+      targets: targets.map((raw) => {
+        const target = raw as Record<string, unknown>;
+        return {
+          targetBps: Number(target.target_bps),
+          achievedBps: Number(target.achieved_bps),
+          errorPercent: Number(target.error_percent),
+          psnrY: Number(target.psnr_y),
+        };
+      }),
+    };
+  });
 }
 
 /// Fritsch–Carlson slopes: what keeps the interpolant from overshooting.

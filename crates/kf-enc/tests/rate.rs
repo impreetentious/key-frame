@@ -107,3 +107,74 @@ fn rate_controller_is_deterministic() {
         assert_eq!(first, second);
     }
 }
+
+#[test]
+fn the_complexity_average_reaches_the_quantizer() {
+    // It did not, for a while. The exponentially weighted average was computed
+    // on every frame and then never read, so the controller was reacting to
+    // bucket fullness alone — a report on what already happened — and the
+    // "bucket fullness plus complexity" model existed only on paper.
+    //
+    // This checks the wiring rather than the tuning: a controller fed steadily
+    // hard frames and one fed steadily easy frames must reach a different bias,
+    // or the average is still decorative.
+    let mut controller = RateController::new(200_000, 30, 1).unwrap();
+    assert_eq!(
+        controller.complexity_bias_q16(),
+        0,
+        "with no history there is nothing to be harder or easier than"
+    );
+
+    // Settle the average at a moderate level, then hand it a much harder frame.
+    for _ in 0..32 {
+        controller.observe_complexity(1_000_000);
+    }
+    let settled = controller.complexity_bias_q16();
+    controller.observe_complexity(4_000_000);
+    let harder = controller.complexity_bias_q16();
+    controller.observe_complexity(0);
+    let easier = controller.complexity_bias_q16();
+
+    assert_eq!(
+        settled, 0,
+        "a frame of average difficulty must not bias anything"
+    );
+    assert!(
+        harder > 0,
+        "a harder frame must push towards a higher quantizer"
+    );
+    assert!(easier < 0, "an easier frame must push the other way");
+
+    // And the bias stays small against the bands it shifts. A bias that could
+    // cross a third would let complexity override fullness rather than inform
+    // it, which is a different controller from the one that was designed.
+    let capacity = controller.capacity_q16();
+    assert!(
+        harder.abs() < capacity / 3 && easier.abs() < capacity / 3,
+        "the complexity bias can override bucket fullness outright"
+    );
+}
+
+#[test]
+fn a_biased_controller_is_still_deterministic() {
+    // The complexity term reads only its own history, so two controllers given
+    // the same sequence have to agree exactly. If it ever depended on anything
+    // ambient, average bitrate would stop being reproducible and every receipt
+    // measured through it would become unrepeatable.
+    let run = || {
+        let mut controller = RateController::new(150_000, 30, 1).unwrap();
+        let mut trace = Vec::new();
+        for index in 0..64_u64 {
+            // A deliberately uneven sequence, so the bias changes sign often.
+            controller.observe_complexity((index * 977) % 5_000_000);
+            controller.commit_frame_bits((index * 7919) % 90_000);
+            trace.push((
+                controller.qp(),
+                controller.fill_q16(),
+                controller.complexity_bias_q16(),
+            ));
+        }
+        trace
+    };
+    assert_eq!(run(), run());
+}

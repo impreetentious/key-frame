@@ -1,6 +1,6 @@
 {
   "format": "key-frame-rd-campaign-v1",
-  "encoder_version": "0.12.10",
+  "encoder_version": "0.13.0",
   "config_sha256": "a482de9284d3789b6cfc021c2008b6d451caf4878325cd6cf554b6c05830896f",
   "metrics": {
     "psnr": "psnr-y",
@@ -740,5 +740,80 @@
         }
       ]
     }
-  ]
+  ],
+  "rate_control": {
+    "note": "Average-bitrate accuracy, reported separately from the curves above and deliberately not shaped like a rate-quality point. These entries carry target_bps and achieved_bps rather than a rate/quality pair, so the BD-rate reader refuses them by name instead of quietly integrating three points that were never a curve. Measured over a longer window than the curves, because the controller is a leaky bucket that has to converge; the frame count is recorded per clip and the short-clip transient is described in docs/LIMITATIONS.md.",
+    "clips": [
+      {
+        "clip": "akiyo_qcif",
+        "clip_sha256": "7f5cd1d5af433817d90652951acb9f8cad5dd3b60207d9cec80a1928e6773eed",
+        "frames": 48,
+        "anchor_qp": 32,
+        "targets": [
+          {
+            "target_bps": 18484,
+            "achieved_bps": 17817.182817182817,
+            "error_percent": -3.607537236621854,
+            "bytes": 3591,
+            "psnr_y": 27.115733079070697,
+            "ssim_y": 0.7902699293486908,
+            "stream_sha256": "9546539f45ce050dacd61462a82ea163ead8f840eba52a86a8ab23c7c1fad0c5"
+          },
+          {
+            "target_bps": 36968,
+            "achieved_bps": 36098.90109890109,
+            "error_percent": -2.350949202280099,
+            "bytes": 7251,
+            "psnr_y": 29.665744969273682,
+            "ssim_y": 0.8608692913181865,
+            "stream_sha256": "f4e8a94c195c115357e00dd61434ee0d52c0f5ead033a55fa7969c4505bea3fa"
+          },
+          {
+            "target_bps": 73936,
+            "achieved_bps": 74775.22477522476,
+            "error_percent": 1.1350692155712563,
+            "bytes": 14994,
+            "psnr_y": 31.862915329751125,
+            "ssim_y": 0.9089651020644328,
+            "stream_sha256": "636f4b40fdcd7d9bca8a9d57eedebdf3a02fd16150485e2a157b042a668da734"
+          }
+        ]
+      },
+      {
+        "clip": "foreman_qcif",
+        "clip_sha256": "74f48df22ccc26cc0b3d0d2aa97a10026361ffcfe9f9399fe0faa38b11084e11",
+        "frames": 48,
+        "anchor_qp": 32,
+        "targets": [
+          {
+            "target_bps": 56416,
+            "achieved_bps": 53416.58341658341,
+            "error_percent": -5.316606252510973,
+            "bytes": 10718,
+            "psnr_y": 27.511751508507544,
+            "ssim_y": 0.8245991628074274,
+            "stream_sha256": "be26b78c6542e04a3a0db4ea9021ab1371e9ea33787cedad84d72e9f548c66d1"
+          },
+          {
+            "target_bps": 112832,
+            "achieved_bps": 111803.1968031968,
+            "error_percent": -0.9118009047107213,
+            "bytes": 22407,
+            "psnr_y": 30.114876941513362,
+            "ssim_y": 0.8865532444999887,
+            "stream_sha256": "7441c839564fe4c8403756f19a9323ac6b9ad0f29a88a3dc70e071c039ca19a9"
+          },
+          {
+            "target_bps": 225664,
+            "achieved_bps": 224300.69930069929,
+            "error_percent": -0.6041285713719134,
+            "bytes": 44929,
+            "psnr_y": 32.006506529423,
+            "ssim_y": 0.9198770582765157,
+            "stream_sha256": "ce3bc42ab4bd983f983ea26df845505ef7dfacf2089a35a4baff4fd39d09d784"
+          }
+        ]
+      }
+    ]
+  }
 }

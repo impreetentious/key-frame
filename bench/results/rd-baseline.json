@@ -1,0 +1,141 @@
+{
+  "format": "key-frame-rd-campaign-v1",
+  "note": "The shipping rate-quality curves as of the release named below, kept so a later encoder can be measured against them. Moving this file is how a deliberate compression regression is accepted; doing it without saying why in the same change is how one gets absorbed silently.",
+  "release": "v0.13.1",
+  "encoder_version": "0.13.0",
+  "config_sha256": "a482de9284d3789b6cfc021c2008b6d451caf4878325cd6cf554b6c05830896f",
+  "settings": {
+    "frames": 24,
+    "keyframe_interval": 120,
+    "golden_interval": 16,
+    "qp_ladder": [
+      22,
+      27,
+      32,
+      37,
+      42
+    ]
+  },
+  "curves": [
+    {
+      "clip": "akiyo_qcif",
+      "clip_sha256": "a31a28480bece4b1249151a98aee863423d5fa87b16586d736f5b5b132cb2f6a",
+      "width": 176,
+      "height": 144,
+      "frames": 24,
+      "toolset": "full",
+      "points": [
+        {
+          "qp": 22,
+          "bytes": 15710,
+          "rate": 156943.05694305693,
+          "quality": 38.13402208272164,
+          "psnr_y": 38.13402208272164,
+          "ssim_y": 0.964045380290769,
+          "lossless": false,
+          "stream_sha256": "fee8ab1f9e60accc33f27fc4d1f6dfc9c8111d3be633007b9684d887614de9aa"
+        },
+        {
+          "qp": 27,
+          "bytes": 9226,
+          "rate": 92167.83216783217,
+          "quality": 34.98305044416614,
+          "psnr_y": 34.98305044416614,
+          "ssim_y": 0.9398592587787686,
+          "lossless": false,
+          "stream_sha256": "081876f4756fc510d2b6d2541094567cfe14d8ad52c72272770575eb9f360d19"
+        },
+        {
+          "qp": 32,
+          "bytes": 4947,
+          "rate": 49420.579420579415,
+          "quality": 32.00299255667172,
+          "psnr_y": 32.00299255667172,
+          "ssim_y": 0.9013303358186942,
+          "lossless": false,
+          "stream_sha256": "97c2dae605a68a5d10107892de717cf7842d60b885c6d8b5173b4265e17c69a8"
+        },
+        {
+          "qp": 37,
+          "bytes": 2700,
+          "rate": 26973.026973026972,
+          "quality": 29.370053930475724,
+          "psnr_y": 29.370053930475724,
+          "ssim_y": 0.8473575384600138,
+          "lossless": false,
+          "stream_sha256": "8b5d259a7480c95ddd9a5e4485ae1af08cc17aa1929ed8b32117cac0c3663d98"
+        },
+        {
+          "qp": 42,
+          "bytes": 1510,
+          "rate": 15084.915084915083,
+          "quality": 26.60275242608329,
+          "psnr_y": 26.60275242608329,
+          "ssim_y": 0.770017089489967,
+          "lossless": false,
+          "stream_sha256": "a9d4783fc58fd3266c672c650d43f1b0465522600deb1dab8bc1624861b464a1"
+        }
+      ]
+    },
+    {
+      "clip": "foreman_qcif",
+      "clip_sha256": "417ac4dd6c625bf0f7f4600f50fe8733792ed8f2f38c7101d525272a1111ca1d",
+      "width": 176,
+      "height": 144,
+      "frames": 24,
+      "toolset": "full",
+      "points": [
+        {
+          "qp": 22,
+          "bytes": 42911,
+          "rate": 428681.31868131866,
+          "quality": 35.567125744937265,
+          "psnr_y": 35.567125744937265,
+          "ssim_y": 0.9514964744460436,
+          "lossless": false,
+          "stream_sha256": "429dc2abdbb8138064fca2c8e4f5371ac7ee43020163dbc0fa502d59639df10a"
+        },
+        {
+          "qp": 27,
+          "bytes": 24133,
+          "rate": 241088.91108891106,
+          "quality": 33.45540634329917,
+          "psnr_y": 33.45540634329917,
+          "ssim_y": 0.9282872254066311,
+          "lossless": false,
+          "stream_sha256": "c6bde4b1b0374cb59775707873f38c9a03a86917b2722fbb3cb7d01c482769b3"
+        },
+        {
+          "qp": 32,
+          "bytes": 13387,
+          "rate": 133736.26373626373,
+          "quality": 31.063523722456065,
+          "psnr_y": 31.063523722456065,
+          "ssim_y": 0.8958330693092474,
+          "lossless": false,
+          "stream_sha256": "28f223f9583f62f17e1f668dcf12aaf8ac9d865433b498bb1f00e0986067989b"
+        },
+        {
+          "qp": 37,
+          "bytes": 7003,
+          "rate": 69960.03996003995,
+          "quality": 28.46692209984395,
+          "psnr_y": 28.46692209984395,
+          "ssim_y": 0.8444673073587855,
+          "lossless": false,
+          "stream_sha256": "ff387bd6c67ecb8bfbf46faaaaf0295fda00d27539eb1d492aae97dfdad33a7c"
+        },
+        {
+          "qp": 42,
+          "bytes": 3644,
+          "rate": 36403.5964035964,
+          "quality": 25.59231660985487,
+          "psnr_y": 25.59231660985487,
+          "ssim_y": 0.7654459185228369,
+          "lossless": false,
+          "stream_sha256": "c829147f303852997666cb6aab9e69e6f04e2c592a1950c04ba4f218e701339a"
+        }
+      ]
+    }
+  ]
+}

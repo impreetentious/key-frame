@@ -23,13 +23,22 @@ use kf_tools::{Json, RatePoint, bd_rate, decode_y4m, psnr_y, sha256_hex, ssim_y}
 const USAGE: &str = "\
 usage: rd_verify --receipts <campaign.json> [options]
 
-  --clip-dir DIR   where the source clips live, default corpus/clips
-  --toolset NAME   verify only this toolset; repeatable, defaults to all
-  --quick          verify the lowest and highest quality point of each curve
+  --clip-dir DIR    where the source clips live, default corpus/clips
+  --toolset NAME    verify only this toolset; repeatable, defaults to all
+  --quick           verify the lowest and highest quality point of each curve
+  --baseline FILE   also check the shipping curves against a previous release
+  --allow PERCENT   how much worse the baseline check tolerates, default 2
 
 Every figure in the receipt is recomputed and compared. --quick checks the ends
 of each ladder rather than all five points; it is a faster smoke test and not a
 substitute for the full run.";
+
+/// How much a release may regress before the check refuses it.
+///
+/// Two percent is the number the benchmark rules fix. It is a real threshold
+/// rather than a formality: an encoder change that costs more than that has to
+/// be argued for in the commit that makes it, not absorbed silently.
+const DEFAULT_ALLOWANCE: f64 = 2.0;
 
 fn main() -> ExitCode {
     match run(env::args().skip(1).collect()) {
@@ -48,6 +57,13 @@ fn run(arguments: Vec<String>) -> Result<String, String> {
     let receipts = value(&arguments, "--receipts").ok_or_else(|| USAGE.to_owned())?;
     let clip_dir = value(&arguments, "--clip-dir").unwrap_or_else(|| "corpus/clips".to_owned());
     let quick = arguments.iter().any(|argument| argument == "--quick");
+    let baseline_path = value(&arguments, "--baseline");
+    let allowance = match value(&arguments, "--allow") {
+        None => DEFAULT_ALLOWANCE,
+        Some(text) => text
+            .parse::<f64>()
+            .map_err(|_| format!("--allow wants a percentage, not {text}"))?,
+    };
     let wanted = repeated(&arguments, "--toolset");
 
     let text = fs::read_to_string(&receipts).map_err(|error| format!("{receipts}: {error}"))?;
@@ -195,10 +211,82 @@ fn run(arguments: Vec<String>) -> Result<String, String> {
     }
 
     let summary = bd_rates(curves)?;
+    let regression = match baseline_path {
+        None => String::new(),
+        Some(path) => {
+            let text = fs::read_to_string(&path).map_err(|error| format!("{path}: {error}"))?;
+            let baseline = Json::parse(&text).map_err(|error| format!("{path}: {error}"))?;
+            check_regression(&document, &baseline, allowance)?
+        }
+    };
+
     Ok(format!(
-        "rd-verify: OK — {checked} point(s) reproduce exactly{}{summary}",
+        "rd-verify: OK — {checked} point(s) reproduce exactly{}{summary}{regression}",
         if quick { " (ladder ends only)" } else { "" }
     ))
+}
+
+/// The shipping toolset against a previous release, on every clip they share.
+///
+/// Only the full toolset is checked. The ablation curves are supposed to move
+/// when the encoder changes — that is what they measure — so holding them to a
+/// regression threshold would fail the build for the encoder getting better.
+fn check_regression(current: &Json, baseline: &Json, allowance: f64) -> Result<String, String> {
+    let curves_of = |document: &Json| -> Result<Vec<(String, Vec<RatePoint>)>, String> {
+        let mut found = Vec::new();
+        for curve in document
+            .get("curves")
+            .and_then(Json::as_array)
+            .ok_or_else(|| "a receipt has no curves".to_owned())?
+        {
+            if text_field(curve, "toolset")? == "full" {
+                found.push((text_field(curve, "clip")?, rate_points(curve)?));
+            }
+        }
+        Ok(found)
+    };
+
+    let now = curves_of(current)?;
+    let before = curves_of(baseline)?;
+    if before.is_empty() {
+        return Err("the baseline has no shipping curve to compare against".to_owned());
+    }
+
+    let mut lines = String::from("\n  against the baseline:");
+    let mut regressions = Vec::new();
+    let mut compared = 0_usize;
+    for (clip, points) in &now {
+        let Some((_, was)) = before.iter().find(|(name, _)| name == clip) else {
+            // A clip the baseline never measured is not a regression, but it is
+            // worth saying so: a silent skip is how a comparison quietly stops
+            // covering anything.
+            lines.push_str(&format!(
+                "\n    {clip}: absent from the baseline, not compared"
+            ));
+            continue;
+        };
+        let percent = bd_rate(was, points).map_err(|error| format!("{clip}: {error}"))?;
+        compared += 1;
+        lines.push_str(&format!("\n    {clip}: {percent:+.2}% bitrate"));
+        if percent > allowance {
+            regressions.push(format!(
+                "{clip} costs {percent:+.2}% more bitrate than the baseline, over the {allowance:.2}% allowance"
+            ));
+        }
+    }
+
+    if compared == 0 {
+        return Err(
+            "the baseline and the receipt share no clip, so nothing was checked".to_owned(),
+        );
+    }
+    if !regressions.is_empty() {
+        return Err(format!(
+            "the shipping encoder regressed:\n  {}\n  If this is intended, say so in the change that causes it and move the baseline.",
+            regressions.join("\n  ")
+        ));
+    }
+    Ok(lines)
 }
 
 /// Each ablation against the full toolset on the same clip.

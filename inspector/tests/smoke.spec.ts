@@ -300,3 +300,26 @@ async function attachSource(
     { width, height, frames, body: sample.toString() },
   );
 }
+
+test("average-bitrate accuracy is reported apart from the curves", async ({ page }) => {
+  await page.goto("/#t=curves");
+
+  // The table has to exist and carry every target the receipt measured.
+  const table = page.locator("table.ablations").last();
+  await expect(table.locator("caption")).toContainText(/rate controller delivered/);
+  const rows = table.locator("tbody tr");
+  await expect(rows).toHaveCount(6);
+
+  // And it must not be plotted. Three average-bitrate points are not a curve —
+  // the quality at each is an outcome, not a setting — so the charts must carry
+  // only the toolsets, never a seventh series made of these.
+  const series = await page.evaluate(() =>
+    [...document.querySelectorAll<HTMLCanvasElement>(".chart canvas")].map(
+      (canvas) => canvas.getAttribute("aria-label") ?? "",
+    ),
+  );
+  expect(series.length).toBeGreaterThan(0);
+  for (const label of series) {
+    expect(label).toMatch(/for 6 toolsets$/);
+  }
+});

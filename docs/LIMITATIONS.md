@@ -125,7 +125,25 @@ matrix asserts each of them in both decoders.
   not reported. PSNR and SSIM are pinned to the last constant, and anything
   computed differently is required to call itself something else.
 - **Bitrate figures assume the clip's own frame rate** and cover the whole
-  stream including its sequence header.
+  stream including its sequence header. The average-bitrate accuracy figures
+  are the exception: they exclude the sequence header, because the controller
+  is never given a budget for bytes it does not emit.
+- **Average-bitrate accuracy is a steady-state figure with a measured
+  envelope.** The controller is a single-pass leaky bucket that starts from an
+  initial fill and converges, so it is measurably worse over a short clip than a
+  long one: on the pinned corpus the error runs from 5% to 13% over 24 frames
+  and settles by 48. The published accuracy is measured over 48 frames and the
+  receipt records the count. If you encode a clip shorter than about a second
+  and a half at a bitrate target, expect it to undershoot.
+
+  Even converged, it is not uniformly within 5%. Across twelve operating points
+  on the corpus the mean absolute error is 2.2% and the worst is 5.3%, with two
+  points above 5% — both aggressive targets on the high-motion clip. The cause
+  is structural rather than a tuning failure: the quantizer moves in steps of
+  two with no finer control, so at some targets no achievable sequence of
+  quantizers lands inside 5%. Closing that would take per-superblock quantizer
+  adjustment, which is a syntax addition and therefore a bitstream-version bump.
+  See [ADR-0016](adr/0016-complexity-term-in-rate-control.md).
 
 ## Accounting semantics
 
