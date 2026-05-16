@@ -104,7 +104,7 @@ impl SyntaxWriter {
     }
 
     fn write_unsigned_bypass(&mut self, value: u32) -> Result<(), BitstreamError> {
-        self.record_element(SyntaxElement::RiceRemainder);
+        self.record_element(SyntaxElement::MagnitudeRemainder);
         let code_number = value + 1;
         let prefix = 31 - code_number.leading_zeros();
         for _ in 0..prefix {
@@ -216,7 +216,7 @@ impl SyntaxReader<'_> {
     }
 
     fn read_unsigned_bypass(&mut self) -> Result<u32, BitstreamError> {
-        self.record_element(SyntaxElement::RiceRemainder);
+        self.record_element(SyntaxElement::MagnitudeRemainder);
         let mut prefix = 0_u32;
         while !self.bypass()? {
             prefix += 1;

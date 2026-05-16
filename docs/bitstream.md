@@ -140,9 +140,11 @@ or `intra_mode + residual`.
 
 Residual order is Y, U, V, then derived transform blocks in raster order. Each
 transform starts with `has_coeff`; zero ends that transform. One continues with
-last x/y, scan significance, greater-than-one, greater-than-two, Golomb-Rice
+last x/y, scan significance, greater-than-one, greater-than-two, a magnitude
 remainder, and one bypass sign per nonzero coefficient. The last coordinate is
-implicitly significant. Motion magnitude is exp-Golomb k=0: its first three
+implicitly significant. The magnitude remainder is exp-Golomb k=0 coded entirely
+in bypass: there is no adaptive parameter, and a decoder needs no state to read
+it. Motion magnitude uses the same exp-Golomb k=0 code, but its first three
 prefix bins use contexts, the remaining prefix/suffix are bypass, and zero has
 no sign. `0` sign means positive and `1` means negative.
 
@@ -234,10 +236,10 @@ The SHA-256 values below identify the literal inputs used for this rendering.
 | `mc-vectors.toml` | `88c3901b4c107d2a11be883bb6e5bf1f039803659eaa82a6b87d577ff0bde6b3` |
 | `mc.toml` | `f15dc6b79f647d9ef9e11484618e702d8dccb9e16ee63069b98b64f7f2c31ef1` |
 | `probe.schema.json` | `1a369a113ea65cbdbb3ed120224e98b5014a9c14c85fdcfb99dc5a3d7f3695c9` |
-| `quant.toml` | `b494a97432eea23a29c8587d4c43b2a64537b4290ca7b8424090e619618c0d5d` |
+| `quant.toml` | `60a10a55a2c37645670c95595c29b2fae5dbb684ef524581f18bb690afc98074` |
 | `scans.toml` | `231a562dfbc01351511587be5a201bff1907168b670580bd8967a6551923fb78` |
 | `search.toml` | `7cfc0e02e0e3a4994c109d3746dc9997b53a92d553e96f446bc08c5362767aa5` |
-| `syntax.toml` | `92467acd24f90bf69448624f536de514ffcb72849b17be202a5cd8e29e08689a` |
+| `syntax.toml` | `bbf18ec94543eb0bd782a744d58561f1caaa396af08b6f834b9bbf26a032f14e` |
 | `transform-vectors.toml` | `c7d775b5895a34e9865f358feccd5db1a1fd969ed8b79fb33de95581e66e2786` |
 | `transforms.toml` | `32be222922aa6e454d843786d1b3d4f0e21a6cfba756b46b9efd2a766e187910` |
 | `vectors.json` | `4ffa43d95a72bee5ce0b333d8cc25789dcad453fdcd037cccab121c737b7255d` |

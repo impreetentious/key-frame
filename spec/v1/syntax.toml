@@ -18,7 +18,7 @@ skip_has_mvd = false
 skip_has_residual = false
 
 [coefficient_block]
-elements = ["has_coeff", "last_x", "last_y", "sig", "gt1", "gt2", "rice_remainder", "nonzero_sign"]
+elements = ["has_coeff", "last_x", "last_y", "sig", "gt1", "gt2", "magnitude_remainder", "nonzero_sign"]
 zero_terminates_after = "has_coeff"
 sign_zero = "positive"
 sign_one = "negative"

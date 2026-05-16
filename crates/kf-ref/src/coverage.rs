@@ -59,7 +59,7 @@ impl ReferenceElement {
             Self::Significance => "sig",
             Self::GreaterThanOne => "gt1",
             Self::GreaterThanTwo => "gt2",
-            Self::MagnitudeRemainder => "rice_remainder",
+            Self::MagnitudeRemainder => "magnitude_remainder",
             Self::LevelSign => "nonzero_sign",
         }
     }

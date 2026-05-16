@@ -168,9 +168,11 @@ or `intra_mode + residual`.
 
 Residual order is Y, U, V, then derived transform blocks in raster order. Each
 transform starts with `has_coeff`; zero ends that transform. One continues with
-last x/y, scan significance, greater-than-one, greater-than-two, Golomb-Rice
+last x/y, scan significance, greater-than-one, greater-than-two, a magnitude
 remainder, and one bypass sign per nonzero coefficient. The last coordinate is
-implicitly significant. Motion magnitude is exp-Golomb k=0: its first three
+implicitly significant. The magnitude remainder is exp-Golomb k=0 coded entirely
+in bypass: there is no adaptive parameter, and a decoder needs no state to read
+it. Motion magnitude uses the same exp-Golomb k=0 code, but its first three
 prefix bins use contexts, the remaining prefix/suffix are bypass, and zero has
 no sign. `0` sign means positive and `1` means negative.
 

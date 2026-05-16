@@ -161,7 +161,7 @@ name = "gt2"
 vectors = ["hand:coefficient_size_matrix"]
 
 [[elements]]
-name = "rice_remainder"
+name = "magnitude_remainder"
 vectors = ["hand:coefficient_size_matrix"]
 
 [[elements]]

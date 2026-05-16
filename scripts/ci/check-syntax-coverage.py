@@ -95,7 +95,7 @@ def main() -> int:
 
     required_elements = [
         "partition_tree", "skip", "is_inter", "intra_mode", "ref_select", "mvd",
-        "has_coeff", "last_x", "last_y", "sig", "gt1", "gt2", "rice_remainder", "nonzero_sign",
+        "has_coeff", "last_x", "last_y", "sig", "gt1", "gt2", "magnitude_remainder", "nonzero_sign",
     ]
     coverage_elements = toml_names(COVERAGE, "[[elements]]")
     if coverage_elements != required_elements:
@@ -112,7 +112,7 @@ def main() -> int:
         if in_coeff and line.startswith("elements = "):
             coeff_elements = ast.literal_eval(line.split("=", 1)[1].strip())
             break
-    if coeff_elements != ["has_coeff", "last_x", "last_y", "sig", "gt1", "gt2", "rice_remainder", "nonzero_sign"]:
+    if coeff_elements != ["has_coeff", "last_x", "last_y", "sig", "gt1", "gt2", "magnitude_remainder", "nonzero_sign"]:
         errors.append("syntax.toml coefficient elements drifted from the coverage inventory")
 
     vector_lines = [

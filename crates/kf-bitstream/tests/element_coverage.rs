@@ -33,7 +33,7 @@ fn an_all_zero_block_codes_presence_only() {
         SyntaxElement::Sig,
         SyntaxElement::Gt1,
         SyntaxElement::Gt2,
-        SyntaxElement::RiceRemainder,
+        SyntaxElement::MagnitudeRemainder,
         SyntaxElement::NonzeroSign,
     ] {
         assert!(
@@ -62,7 +62,7 @@ fn magnitude_ladder_reaches_the_bypass_elements_in_order() {
     for (level, expected_new) in [
         (1_i32, Some(SyntaxElement::Gt1)),
         (2, Some(SyntaxElement::Gt2)),
-        (3, Some(SyntaxElement::RiceRemainder)),
+        (3, Some(SyntaxElement::MagnitudeRemainder)),
         (400, None),
     ] {
         let mut levels = vec![0_i32; 16];

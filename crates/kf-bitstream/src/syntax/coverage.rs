@@ -39,7 +39,7 @@ pub enum SyntaxElement {
     /// A greater-than-two magnitude flag.
     Gt2,
     /// The bypass-coded magnitude remainder above two.
-    RiceRemainder,
+    MagnitudeRemainder,
     /// The bypass-coded sign of a nonzero level.
     NonzeroSign,
 }
@@ -59,7 +59,7 @@ impl SyntaxElement {
         Self::Sig,
         Self::Gt1,
         Self::Gt2,
-        Self::RiceRemainder,
+        Self::MagnitudeRemainder,
         Self::NonzeroSign,
     ];
 
@@ -79,7 +79,7 @@ impl SyntaxElement {
             Self::Sig => "sig",
             Self::Gt1 => "gt1",
             Self::Gt2 => "gt2",
-            Self::RiceRemainder => "rice_remainder",
+            Self::MagnitudeRemainder => "magnitude_remainder",
             Self::NonzeroSign => "nonzero_sign",
         }
     }
