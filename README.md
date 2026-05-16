@@ -55,6 +55,11 @@ specification. Every gate in the repository exists to prove the two agree.
   with keyframe ticks, draws six syntax overlays, answers a click with the
   block's full syntax, and shares any of it as a link. Nothing on that page is a
   pre-decoded picture.
+- Measures what each encoder tool is worth by turning it off and encoding
+  again, publishes the curves with the configuration that produced them, and
+  re-derives every point on demand. The ablations narrow what the encoder will
+  choose and never what the bitstream means, so every measured stream is an
+  ordinary file both decoders reconstruct bit-exactly.
 - Verifies itself with one command that runs every gate continuous integration
   runs, in the same order.
 
@@ -67,6 +72,10 @@ performance project: version one has no B-frames, no 10-bit support, no SIMD, no
 threading, no container format, no network streaming, and no GPU path.
 
 ## Limitations
+
+Every known weakness is named in full in
+[`docs/LIMITATIONS.md`](docs/LIMITATIONS.md), with the reason the design accepts
+it. The short version:
 
 The bitstream is original, so nothing else decodes a `.kfv` file. Compression
 efficiency is not competitive with production codecs and is never presented as
@@ -86,6 +95,16 @@ against the 116 the format can actually code rather than as a percentage of the
 whole bank. Linux x86_64 and macOS arm64 are the supported native targets;
 Windows is not supported.
 
+## Intellectual property
+
+Key Frame is an original educational codec: its bitstream is its own, and it
+implements no proprietary or standardized format. The techniques it uses (block
+transforms, motion compensation, arithmetic coding, deblocking) are the
+decades-old published foundations of the field. The project makes no patent
+claims of its own and provides no warranty or legal opinion of any kind; it
+exists to be read and learned from. This project never markets itself as a
+replacement for standardized codecs.
+
 ## Stack
 
 Rust 1.88.0 · edition 2024 · WebAssembly · React · TypeScript · Vite · Bash ·
@@ -95,6 +114,8 @@ Node.js for repository checks
 
 - [`docs/bitstream.md`](docs/bitstream.md) is the decoder-normative v1 contract,
   generated from the frozen specification assets.
+- [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md) names every known weakness, why
+  the design accepts it, and what lifting it would take.
 - [`docs/adr/`](docs/adr/) records every architectural decision, the alternatives
   weighed, and the consequences accepted.
 - [`spec/`](spec/) holds the literal assets, their derivation checks, and an
@@ -105,6 +126,8 @@ Node.js for repository checks
 - [`corpus/`](corpus/) pins the source clips used for measurement and for the
   bit-exactness proof on natural video; the clips themselves are fetched by
   checksum, never redistributed.
+- [`bench/`](bench/) holds the independent metric oracle, the vectors it
+  authors, and the committed rate–distortion receipts the charts draw.
 - [`inspector/`](inspector/) is the projection room and the cutting room: the
   browser page that decodes streams live and the catalogue of real defects the
   gates have found, each pinned to the stream that produced it.
@@ -112,7 +135,18 @@ Node.js for repository checks
 ## Run locally
 
 Install Rust 1.88.0 — the repository pin selects it and the WebAssembly target
-automatically — and a current Node.js LTS release. Encode, decode, and inspect an 8-bit 4:2:0 input:
+automatically — and a current Node.js LTS release.
+
+The fastest way to see what the codec does is the terminal demo. It generates a
+clip, encodes it, decodes it, measures it, prints one frame's syntax, and ends
+by proving that both decoders and the encoder's own reconstruction agree on
+every sample:
+
+```sh
+./scripts/demo.sh
+```
+
+Or run the tools directly on an 8-bit 4:2:0 input:
 
 ```sh
 cargo run --release -p kf-tools --bin kfenc -- \
@@ -177,4 +211,4 @@ preflight green.
 
 ---
 
-**Version:** v0.12.12
+**Version:** v0.12.13
