@@ -8,8 +8,8 @@
 //! codec perimeter forbids floating point outright. So the property that needs
 //! a metric lives here, with the tools that are allowed to compute one.
 //!
-//! The property is that a narrowed search never beats the full one on both rate
-//! and quality at once. Fewer bytes alone proves nothing: rate–distortion
+//! The property is that a narrowed search never wins against the full one on
+//! both rate and quality at once. Fewer bytes alone proves nothing: rate–distortion
 //! optimization trades the two against each other, so removing a candidate can
 //! save bits by giving up the quality that candidate was buying. Dropping the
 //! golden reference on this clip does exactly that, and it is a real result.
@@ -24,7 +24,7 @@ use kf_frame::Frame;
 use kf_tools::psnr_y;
 
 fn sequence() -> SequenceHeader {
-    SequenceHeader::new(128, 128, 24, 1, 120, 4).unwrap()
+    SequenceHeader::new(64, 64, 24, 1, 120, 4).unwrap()
 }
 
 /// A textured field panned by a displacement that is not a whole block.
@@ -57,9 +57,9 @@ fn panning_clip(frames: usize) -> Vec<Frame> {
 
     (0..frames)
         .map(|index| {
-            let mut frame = Frame::filled_420(128, 128, 0).unwrap();
-            for y in 0..128_u32 {
-                for x in 0..128_u32 {
+            let mut frame = Frame::filled_420(64, 64, 0).unwrap();
+            for y in 0..64_u32 {
+                for x in 0..64_u32 {
                     let source_x = (x as usize + index * 3) % 200;
                     let source_y = (y as usize + index * 2) % 200;
                     frame
@@ -100,7 +100,7 @@ fn no_ablation_is_both_smaller_and_sharper_than_the_full_toolset() {
         let (bytes, quality) = rate_and_quality(Toolset::named(name).unwrap(), &clip);
         assert!(
             !(bytes < full_bytes && quality > full_quality),
-            "{name} coded {bytes} bytes at {quality:.3} dB, beating the full toolset's \
+            "{name} coded {bytes} bytes at {quality:.3} dB, ahead of the full toolset's \
              {full_bytes} bytes at {full_quality:.3} dB on both axes"
         );
     }

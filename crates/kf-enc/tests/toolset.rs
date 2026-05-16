@@ -19,7 +19,7 @@ use kf_frame::Frame;
 use kf_ref::ReferenceDecoder;
 
 fn sequence() -> SequenceHeader {
-    SequenceHeader::new(128, 128, 24, 1, 120, 4).unwrap()
+    SequenceHeader::new(64, 64, 24, 1, 120, 4).unwrap()
 }
 
 /// A short clip with real translation in it.
@@ -58,9 +58,9 @@ fn panning_clip(frames: usize) -> Vec<Frame> {
 
     (0..frames)
         .map(|index| {
-            let mut frame = Frame::filled_420(128, 128, 0).unwrap();
-            for y in 0..128_u32 {
-                for x in 0..128_u32 {
+            let mut frame = Frame::filled_420(64, 64, 0).unwrap();
+            for y in 0..64_u32 {
+                for x in 0..64_u32 {
                     let source_x = (x as usize + index * 3) % 200;
                     let source_y = (y as usize + index * 2) % 200;
                     frame

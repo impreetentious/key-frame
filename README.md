@@ -78,8 +78,8 @@ Every known weakness is named in full in
 it. The short version:
 
 The bitstream is original, so nothing else decodes a `.kfv` file. Compression
-efficiency is not competitive with production codecs and is never presented as
-if it were; every published rate–distortion number is self-measured on a named
+efficiency falls well short of production codecs and is never presented as if it
+did not; every published rate–distortion number is self-measured on a named
 corpus with the encoder build that produced it. The encoder is scalar and
 single-threaded, and it optimizes for a decision you can follow rather than for
 speed; its average-bitrate mode is a single-pass leaky bucket that holds a
@@ -118,6 +118,9 @@ Node.js for repository checks
   the design accepts it, and what lifting it would take.
 - [`docs/adr/`](docs/adr/) records every architectural decision, the alternatives
   weighed, and the consequences accepted.
+- [`docs/writeups/`](docs/writeups/) is six pieces on why the codec is shaped the
+  way it is: the range coder, the closed loop, freezing a bitstream, fuzzing your
+  own decoder, and how to publish compression numbers honestly.
 - [`spec/`](spec/) holds the literal assets, their derivation checks, and an
   independent standard-library oracle that authors test vectors without the
   Rust implementation.
@@ -211,4 +214,4 @@ preflight green.
 
 ---
 
-**Version:** v0.12.13
+**Version:** v0.13.0

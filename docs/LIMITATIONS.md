@@ -17,10 +17,12 @@ and a mode decision priced with modeled entropy rather than trial encodes. Each
 of those is a deliberate simplification in favour of a decision a reader can
 follow, and each costs measurable efficiency.
 
-The words "competitive", "beats", and "rivals" do not appear anywhere in this
-repository describing its own performance, and the rate–distortion tab of the
-[projection room](../inspector/) carries a caveat box saying plainly that the
-comparison on offer is this codec against itself.
+This repository never claims to be competitive with, to beat, or to rival a
+standardized encoder. Those three words are banned from it as performance
+claims — the only places they appear are statements of the rule itself, here and
+in [ADR-0001](adr/0001-foundation-decisions.md) — and the rate–distortion tab of
+the [projection room](../inspector/) carries a caveat box saying plainly that
+the comparison on offer is this codec against itself.
 
 Where the individual costs are measured, they are measured:
 `bench/results/rd-campaign.json` records what each encoder tool is worth, and
