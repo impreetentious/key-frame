@@ -105,6 +105,27 @@ def bump_first_case_expectation(text):
     return text[:start] + str(value) + text[end:]
 
 
+def rename_first_plane(text):
+    """Renames the first coded plane, leaving the residual order behind."""
+    match = re.search(r'^planes = \["([a-z]+)"', text, re.MULTILINE)
+    if not match:
+        raise SystemExit("mutation target planes not found")
+    start, end = match.span(1)
+    return text[:start] + (match.group(1) + "1") + text[end:]
+
+
+def drop_last_predictor_candidate(text):
+    """Removes the last motion-vector predictor candidate."""
+    match = re.search(r'^candidates = \[(.*)\]$', text, re.MULTILINE)
+    if not match:
+        raise SystemExit("mutation target candidates not found")
+    entries = [entry.strip() for entry in match.group(1).split(",")]
+    if len(entries) < 2:
+        raise SystemExit("candidates is too short to shorten")
+    start, end = match.span(1)
+    return text[:start] + ", ".join(entries[:-1]) + text[end:]
+
+
 def flip_oracle_payload(text):
     """Changes one byte of one committed oracle vector."""
     document = json.loads(text)
@@ -148,6 +169,8 @@ CASES = [
     Case("mc.toml", "one declared phase blend weight", bump_phase_weight("luma_phase_sequences"), True),
     Case("mc.toml", "the two-stage rounding bias", bump_scalar("two_stage_rounding"), True),
     Case("mc.toml", "the quarter-pixel phase denominator", bump_scalar("phase_denominator"), True),
+    Case("syntax.toml", "one coded plane name", rename_first_plane, True),
+    Case("mc.toml", "one motion-vector predictor candidate", drop_last_predictor_candidate, True),
     Case("mc-vectors.toml", "one expected interpolated sample", bump_first_case_expectation, True),
     Case("vectors.json", "one oracle packet payload byte", flip_oracle_payload, True),
 ]

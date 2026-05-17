@@ -319,3 +319,268 @@ fn median(first: i32, second: i32, third: i32) -> i32 {
     let high = first.max(second);
     third.clamp(low, high)
 }
+
+#[cfg(test)]
+mod declared_predictor {
+    //! The same declaration, read again by this decoder's own parser.
+    //!
+    //! `spec/v1/mc.toml` names the predictor's candidates and the rules that go
+    //! with them. The production crate has a test that holds its implementation
+    //! to that declaration; this one holds this implementation to it. Two
+    //! decoders that both read the specification cannot agree except by
+    //! agreeing with the specification, which is the whole point of there being
+    //! two.
+    //!
+    //! Isolating one candidate under a median takes a bare majority carrying
+    //! the same marker: a median ignores its extremes, so a field that gives
+    //! every candidate a distinct vector still passes when one of them is read
+    //! from the wrong cell. Every cell outside that majority holds an intra
+    //! block, so a misread candidate finds a neighbour that cannot contribute
+    //! rather than an accident that agrees.
+
+    use kf_spec::V1_ASSETS;
+
+    use super::{RefMotionField, RefMotionVector, RefReference};
+
+    const X: u32 = 16;
+    const Y: u32 = 16;
+    const SIZE: u32 = 8;
+    const NEIGHBOURHOOD: [&str; 4] = ["left", "above", "above_right", "above_left"];
+    const MARKER: RefMotionVector = RefMotionVector {
+        x_q4: 44,
+        y_q4: -36,
+    };
+    const DECOY: RefMotionVector = RefMotionVector {
+        x_q4: -100,
+        y_q4: 100,
+    };
+
+    fn section() -> &'static str {
+        V1_ASSETS
+            .iter()
+            .find(|asset| asset.name == "mc.toml")
+            .expect("kf-spec exposes mc.toml")
+            .contents
+            .split_once("[mv_predictor]")
+            .expect("mc.toml declares an [mv_predictor] section")
+            .1
+    }
+
+    fn declaration(key: &str) -> String {
+        let prefix = format!("{key} = ");
+        section()
+            .lines()
+            .take_while(|line| !line.trim_start().starts_with('['))
+            .find_map(|line| line.trim().strip_prefix(&prefix))
+            .unwrap_or_else(|| panic!("[mv_predictor] declares no `{key}`"))
+            .trim()
+            .to_owned()
+    }
+
+    fn declared_list(key: &str) -> Vec<String> {
+        declaration(key)
+            .trim_start_matches('[')
+            .trim_end_matches(']')
+            .split(',')
+            .map(|entry| entry.trim().trim_matches('"').to_owned())
+            .filter(|entry| !entry.is_empty())
+            .collect()
+    }
+
+    fn cell(name: &str) -> (u32, u32) {
+        let (x, y): (i64, i64) = match name {
+            "left" => (i64::from(X) - 1, i64::from(Y)),
+            "above" => (i64::from(X), i64::from(Y) - 1),
+            "above_right" => (i64::from(X) + i64::from(SIZE), i64::from(Y) - 1),
+            "above_left" => (i64::from(X) - 1, i64::from(Y) - 1),
+            other => panic!(
+                "mc.toml names a predictor candidate this decoder's test cannot place: \
+                 `{other}`"
+            ),
+        };
+        assert!(x >= 0 && y >= 0, "a candidate position left the frame");
+        (
+            u32::try_from(x).unwrap() / SIZE * SIZE,
+            u32::try_from(y).unwrap() / SIZE * SIZE,
+        )
+    }
+
+    fn candidate_cells(name: &str) -> ((u32, u32), Option<(u32, u32)>) {
+        match name.split_once("_else_") {
+            Some((first, second)) => (cell(first), Some(cell(second))),
+            None => (cell(name), None),
+        }
+    }
+
+    fn declared_unavailable() -> RefMotionVector {
+        let components: Vec<i32> = declared_list("unavailable")
+            .iter()
+            .map(|entry| entry.parse::<i32>().expect("declared as integers"))
+            .collect();
+        assert_eq!(components.len(), 2, "a motion vector has two components");
+        RefMotionVector {
+            x_q4: components[0],
+            y_q4: components[1],
+        }
+    }
+
+    /// `moving` cells carry their vector; every other neighbour is intra.
+    fn neighbourhood(moving: &[((u32, u32), RefMotionVector, RefReference)]) -> RefMotionField {
+        let mut field = RefMotionField::new(64, 64).unwrap();
+        let mut placed: Vec<(u32, u32)> = Vec::new();
+        for (origin, vector, reference) in moving {
+            if placed.contains(origin) {
+                continue;
+            }
+            field.record_inter(origin.0, origin.1, SIZE, *reference, *vector);
+            placed.push(*origin);
+        }
+        for name in NEIGHBOURHOOD {
+            let origin = cell(name);
+            if placed.contains(&origin) {
+                continue;
+            }
+            field.record_intra(origin.0, origin.1, SIZE);
+            placed.push(origin);
+        }
+        field
+    }
+
+    fn carrying(
+        live: &[(u32, u32)],
+        vector: RefMotionVector,
+        reference: RefReference,
+    ) -> RefMotionField {
+        let moving: Vec<((u32, u32), RefMotionVector, RefReference)> = live
+            .iter()
+            .map(|origin| (*origin, vector, reference))
+            .collect();
+        neighbourhood(&moving)
+    }
+
+    fn majority(candidates: &[String], index: usize) -> Vec<(u32, u32)> {
+        let needed = candidates.len() / 2 + 1;
+        let mut chosen = vec![index];
+        for other in 0..candidates.len() {
+            if chosen.len() == needed {
+                break;
+            }
+            if other != index {
+                chosen.push(other);
+            }
+        }
+        chosen
+            .into_iter()
+            .map(|slot| candidate_cells(&candidates[slot]).0)
+            .collect()
+    }
+
+    #[test]
+    fn the_combine_rule_is_the_one_this_test_derives_from() {
+        assert_eq!(declaration("combine"), "\"componentwise_median\"");
+        let candidates = declared_list("candidates");
+        assert_eq!(candidates.len() % 2, 1);
+        assert!(candidates.len() >= 3);
+    }
+
+    #[test]
+    fn each_declared_candidate_is_read_from_the_cell_its_name_names() {
+        let candidates = declared_list("candidates");
+        let unavailable = declared_unavailable();
+        for (index, name) in candidates.iter().enumerate() {
+            let live = majority(&candidates, index);
+            let field = carrying(&live, MARKER, RefReference::Last);
+            assert_eq!(
+                field.predictor(X, Y, SIZE, RefReference::Last),
+                MARKER,
+                "the `{name}` candidate was not read from the cell mc.toml names"
+            );
+
+            let primary = candidate_cells(name).0;
+            let without: Vec<(u32, u32)> = live
+                .iter()
+                .copied()
+                .filter(|origin| *origin != primary)
+                .collect();
+            let field = carrying(&without, MARKER, RefReference::Last);
+            assert_eq!(
+                field.predictor(X, Y, SIZE, RefReference::Last),
+                unavailable,
+                "dropping the `{name}` candidate left the prediction unchanged"
+            );
+        }
+    }
+
+    #[test]
+    fn a_declared_fallback_candidate_falls_back_where_the_name_says() {
+        let candidates = declared_list("candidates");
+        let mut checked = 0;
+        for (index, name) in candidates.iter().enumerate() {
+            let (primary, fallback) = candidate_cells(name);
+            let Some(fallback) = fallback else { continue };
+            checked += 1;
+            assert_ne!(primary, fallback);
+
+            let live = majority(&candidates, index);
+            let mut fallen_back: Vec<(u32, u32)> =
+                live.iter().copied().filter(|o| *o != primary).collect();
+            fallen_back.push(fallback);
+            let field = carrying(&fallen_back, MARKER, RefReference::Last);
+            assert_eq!(
+                field.predictor(X, Y, SIZE, RefReference::Last),
+                MARKER,
+                "the `{name}` candidate did not fall back where its name says"
+            );
+
+            // With both cells available and disagreeing, the primary wins.
+            // Without this the halves of an `a_else_b` name are interchangeable.
+            let mut moving: Vec<((u32, u32), RefMotionVector, RefReference)> = live
+                .iter()
+                .map(|origin| (*origin, MARKER, RefReference::Last))
+                .collect();
+            moving.push((fallback, DECOY, RefReference::Last));
+            let field = neighbourhood(&moving);
+            assert_eq!(
+                field.predictor(X, Y, SIZE, RefReference::Last),
+                MARKER,
+                "the `{name}` candidate preferred its fallback cell over its primary one"
+            );
+        }
+        assert_eq!(checked, 1, "this decoder implements one fallback candidate");
+    }
+
+    #[test]
+    fn an_unavailable_candidate_contributes_the_declared_vector() {
+        let field = RefMotionField::new(64, 64).unwrap();
+        assert_eq!(
+            field.predictor(X, Y, SIZE, RefReference::Last),
+            declared_unavailable()
+        );
+        let field = neighbourhood(&[]);
+        assert_eq!(
+            field.predictor(X, Y, SIZE, RefReference::Last),
+            declared_unavailable()
+        );
+    }
+
+    #[test]
+    fn a_neighbour_on_the_other_reference_is_not_a_candidate() {
+        assert_eq!(declaration("same_reference_required"), "true");
+        let candidates = declared_list("candidates");
+        let live: Vec<(u32, u32)> = candidates
+            .iter()
+            .map(|name| candidate_cells(name).0)
+            .collect();
+        let field = carrying(&live, MARKER, RefReference::Golden);
+        assert_eq!(
+            field.predictor(X, Y, SIZE, RefReference::Last),
+            declared_unavailable(),
+            "GOLDEN neighbours were counted while predicting a LAST block"
+        );
+        assert_eq!(
+            field.predictor(X, Y, SIZE, RefReference::Golden),
+            MARKER,
+            "and the same neighbours were not counted while predicting a GOLDEN block"
+        );
+    }
+}

@@ -24,6 +24,8 @@ proves on every change, and this table is the index.
 | Every syntax element round-trips, and the partition tree, prediction branches, and coefficient coding mean what the tables say | `scripts/ci/syntax-gate.sh` |
 | Adaptive binary range coder over a closed set of 144 contexts | `scripts/ci/range-gate.sh` and `crates/kf-range/tests/normative_limits.rs`, which check the probability clamps, the adaptation rate, the context count, and the finalization tail against the frozen constants |
 | Modeled-entropy costs the encoder reuses for its own decisions | `scripts/ci/entropy-gate.sh` |
+| The declared motion-vector predictor candidates are the neighbours both decoders read, in the order and with the fallback the declaration names | `crates/kf-predict/tests/declared_predictor.rs` and the `declared_predictor` module in `crates/kf-ref/src/motion.rs`, each reading `spec/v1/mc.toml` through its own parser. A candidate name neither recognises is a failure rather than a skip, and the neighbourhood is built so that a bare majority carries one marker — a median ignores its extremes, so a field that merely gives each candidate a distinct vector passes while a candidate is read from the wrong cell |
+| Where two assets state the same fact, or one asset states it twice, they are made to agree — including the coded plane list against the residual plane order | `spec/check_assets.py`, with `spec/mutation_check.py` requiring a rejection when either copy moves |
 | The declared per-phase interpolation blend table is the blend both decoders perform | `spec/check_assets.py` evaluates every declared luma and chroma phase sequence against the blend the codec derives from the phase index, comparing on sample values rather than symbolically because the table writes its fractions reduced |
 
 ## Verification
@@ -32,7 +34,8 @@ proves on every change, and this table is the index.
 | --- | --- |
 | Two decoders, written independently, agreeing bit-exactly | `scripts/ci/reference-gate.sh` and `scripts/ci/conformance-gate.sh`; `scripts/ci/forbidden-grep.sh` fails the build if `kf-ref` ever imports a production codec crate or declares a dependency beyond `kf-frame` and `kf-spec` |
 | Conformance coverage stated as a measurement: every reachable syntax element and context slot, with at least one stream per element the encoder did not author | `scripts/ci/coverage-gate.sh`, which instruments both decoders and counts |
-| Bit-exactness on natural video, not only synthetic sources | `scripts/ci/corpus-gate.sh`, both pinned clips at five quantizers in both decoders and the encoder's closed loop |
+| Bit-exactness on natural video, not only synthetic sources | `scripts/ci/corpus-gate.sh`, every pinned clip at five quantizers in both decoders and the encoder's closed loop |
+| Every field the corpus manifest pins is checked against the clip that arrives | `scripts/fetch-corpus.sh` reads the address, checksum, dimensions, and frame count from `corpus/manifest.toml` through `scripts/corpus-manifest.sh` and refuses a clip that disagrees with any of them. `scripts/ci/corpus-gate.sh` and `scripts/ci/rate-gate.sh` take their clip list from the same place, so a clip the corpus gains is measured rather than merely declared, and a manifest that parses to nothing is a failure rather than a loop that runs zero times |
 | Damage detected, contained, and never allowed into later prediction | `scripts/ci/error-matrix-gate.sh`, thirteen named traps in both decoders plus a single-byte wound sweep |
 | Decoder campaigns with zero panics or hangs | `scripts/ci/fuzz-gate.sh`; the nightly budget is checked against the declared one by `crates/kf-fuzz/tests/campaign.rs` |
 | Any frame seekable to the same image linear decoding produces | `scripts/ci/seek-gate.sh` |

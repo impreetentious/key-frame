@@ -31,33 +31,84 @@ cd "$repo_root"
 unread=""
 count=0
 
-# A key counts as read if its name appears in something that runs, or if the
-# codebase builds the name at runtime. The size-suffixed tables are the second
-# case: `matrix.rs` and `scan.rs` reach `n4` through `format!("n{size} = [")`,
-# so the literal name is never written down and a plain search would call a
-# table that every transform depends on unread.
+# The search is scoped to the files that read the asset the key comes from.
+#
+# It used to be a bare word search over the whole tree, and that made the gate
+# vacuous for every generically named declaration. `contexts.toml`'s `count`,
+# `syntax.toml`'s `planes`, `mc.toml`'s `candidates`, `search.toml`'s `qp` — the
+# word appears hundreds of times in unrelated code, so the gate reported them
+# read while nothing anywhere consulted the declaration. Tightening it exposed
+# two that genuinely were not: the coded plane list and the motion-vector
+# predictor's candidate set, both of them decoder-normative.
+#
+# Scoping works because of how consumers reach an asset. Every reader finds it
+# by name — `V1_ASSETS.iter().find(|asset| asset.name == "mc.toml")` in Rust,
+# `V1 / "mc.toml"` in the specification scripts, a path in a CI script — so a
+# file that reads an asset contains that asset's file name. A file that does
+# not is not reading it, whatever words it happens to contain.
+#
+# Scoping alone is still not enough, because a generic key collides with an
+# ordinary identifier inside the very files that read its asset. `width = 7`
+# added to `scans.toml` passed a scoped word search: the scan readers talk about
+# plane widths all day, and one of them says the word in a docstring. So the
+# occurrence also has to look like a key being addressed rather than a variable
+# being used.
+#
+# Readers address a key inside a string, always: `strip_prefix("filter_taps = [")`
+# in Rust, `scalar_int(constants, "bit_depth")` in Python, and `^minimum_qp =`
+# inside a pattern. Each of those puts the name against a quote or against the
+# anchor that opens the pattern. An identifier in running code does not, and
+# neither does a word in prose.
+#
+# Two files are kept out of the reader set. `spec/generate_docs.py` is excluded
+# for the reason the document itself is: it names every asset and renders
+# whatever it finds, so counting it would let the generator vouch for the
+# declaration it prints. This script is excluded because it names assets to
+# explain itself, and a gate that reads its own comments as evidence proves
+# nothing.
+readers_of() {
+  grep -rlF -- "$1" crates spec/*.py scripts inspector/src 2>/dev/null \
+    | grep -vE '^(spec/generate_docs\.py|scripts/ci/declared-scalar-use\.sh)$' || true
+}
+
+# Whether one of `readers` addresses `key` as a key rather than using the word.
+addressed_by() {
+  local key="$1" readers="$2"
+  printf '%s\n' "$readers" \
+    | xargs grep -lqE "[\"'^]${key}\b|\b${key}[\"']" 2>/dev/null
+}
+
+# A key also counts as read where the codebase builds the name at runtime. The
+# size-suffixed tables are that case: `matrix.rs` and `scan.rs` reach `n4`
+# through `format!("n{size} = [")`, so the literal name is never written down
+# and a plain search would call a table every transform depends on unread. The
+# builder has to be one of the asset's own readers, so this is a narrower
+# allowance than it used to be rather than a blanket one.
 interpolated='^n(4|8|16|32)$'
 
-while IFS=: read -r asset key; do
-  [[ -n "$key" ]] || continue
-  count=$((count + 1))
-  if [[ "$key" =~ $interpolated ]] && grep -rq 'n{size} = \[' crates 2>/dev/null; then
+for asset in spec/v1/*.toml; do
+  base="$(basename "$asset")"
+  readers="$(readers_of "$base")"
+  if [[ -z "$readers" ]]; then
+    unread+="  $base: nothing reads this asset at all"$'\n'
     continue
   fi
-  if ! grep -rqw -- "$key" crates spec/*.py scripts inspector/src 2>/dev/null; then
-    unread+="  $asset: $key"$'\n'
-  fi
-done < <(
-  for asset in spec/v1/*.toml; do
-    # Scalars and arrays alike. An unread array is the same defect as an unread
-    # scalar and hides better: a table of numbers reads as authoritative, and a
-    # coefficient-coding parameter table survived in this tree describing a
-    # scheme the codec never implemented.
-    grep -oE '^[a-z_0-9]+ = (-?[0-9]+|\[)' "$asset" \
-      | sed "s/ = .*//" \
-      | sed "s|^|$(basename "$asset"):|"
-  done | sort -u
-)
+  # Scalars and arrays alike. An unread array is the same defect as an unread
+  # scalar and hides better: a table of numbers reads as authoritative, and a
+  # coefficient-coding parameter table survived in this tree describing a
+  # scheme the codec never implemented.
+  while read -r key; do
+    [[ -n "$key" ]] || continue
+    count=$((count + 1))
+    if [[ "$key" =~ $interpolated ]] \
+      && printf '%s\n' "$readers" | xargs grep -lq 'n{size} = \[' 2>/dev/null; then
+      continue
+    fi
+    if ! addressed_by "$key" "$readers"; then
+      unread+="  $base: $key"$'\n'
+    fi
+  done < <(grep -oE '^[a-z_0-9]+ = (-?[0-9]+|\[)' "$asset" | sed "s/ = .*//" | sort -u)
+done
 
 if [[ -n "$unread" ]]; then
   echo "declared-scalar-use: the specification declares values nothing reads"

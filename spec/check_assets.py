@@ -98,15 +98,28 @@ def expected_scan(size):
 
 def main():
     errors = []
-    required = [
-        "constants.toml", "fields.toml", "contexts.toml", "syntax.toml",
-        "intra.toml", "mc.toml", "mc-vectors.toml", "deblock.toml", "search.toml", "scans.toml",
-        "transforms.toml", "quant.toml", "costs.toml", "transform-vectors.toml",
-        "vectors.json", "probe.schema.json",
-    ]
+    # The closed asset set comes from the manifest that declares it. It used to
+    # be restated here as a literal list, which made the manifest decoration:
+    # the two could name different sets and this checker would go on verifying
+    # its own copy while the published specification described another one.
+    manifest = V1 / "manifest.toml"
+    required = block_array(manifest, "required")
     for name in required:
         if not (V1 / name).is_file():
             errors.append("missing normative asset %s" % name)
+    # And the reverse direction, which is the one that actually drifts: an asset
+    # added to the directory and never added to the manifest is an asset the
+    # frozen set does not contain, however normative it looks from inside.
+    present = sorted(
+        path.name
+        for path in V1.iterdir()
+        if path.is_file() and path.name != manifest.name
+    )
+    if sorted(required) != present:
+        errors.append(
+            "manifest.toml required (%s) is not the contents of spec/v1 (%s)"
+            % (", ".join(sorted(required)), ", ".join(present))
+        )
 
     contexts = (V1 / "contexts.toml").read_text(encoding="utf-8")
     ids = []
@@ -277,6 +290,29 @@ def main():
         errors.append("syntax.toml intra_modes and intra.toml modes name different modes in different orders")
     if array(syntax_asset, "intra_modes") != array(search, "intra_mode_order"):
         errors.append("syntax.toml intra_modes and search.toml intra_mode_order disagree")
+    # The plane vocabulary and the residual coding order are one fact written
+    # twice: the order string is the plane list with underscores between it.
+    # Nothing reconciled them, so the list could name planes the residual order
+    # did not code and the normative document would print both without comment.
+    declared_planes = array(syntax_asset, "planes")
+    if len(declared_planes) != len(set(declared_planes)):
+        errors.append("syntax.toml planes names the same plane twice")
+    if scalar_text(syntax_asset, "residual_plane_order") != "_".join(declared_planes):
+        errors.append("syntax.toml residual_plane_order does not spell out its own plane list")
+    # The motion-vector predictor's own declarations, reconciled with each
+    # other. A componentwise median needs an odd number of candidates to have a
+    # middle one, and the substitute for an unavailable candidate has to be a
+    # motion vector rather than any other shape of number.
+    mc_asset = V1 / "mc.toml"
+    predictor_candidates = array(mc_asset, "candidates")
+    if scalar_text(mc_asset, "combine") == "componentwise_median" and len(predictor_candidates) % 2 != 1:
+        errors.append("mc.toml combines an even number of predictor candidates by median")
+    if len(array(mc_asset, "unavailable")) != 2:
+        errors.append("mc.toml unavailable is not a two-component motion vector")
+    for name in predictor_candidates:
+        halves = name.split("_else_")
+        if len(halves) > 2 or (len(halves) == 2 and halves[0] == halves[1]):
+            errors.append("mc.toml predictor candidate %s is not a choice between two distinct neighbours" % name)
     # Intra prediction runs on coding blocks and on transform blocks, so the
     # sizes it declares are the union of both.
     if sorted(array(intra, "sizes")) != sorted(set(array(constants, "coding_block_sizes")) | set(array(constants, "transform_sizes"))):

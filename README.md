@@ -136,7 +136,8 @@ Node.js for repository checks
   hashes, reproduced on both native targets in continuous integration.
 - [`corpus/`](corpus/) pins the source clips used for measurement and for the
   bit-exactness proof on natural video; the clips themselves are fetched by
-  checksum, never redistributed.
+  checksum, never redistributed, and every field the manifest pins — address,
+  checksum, dimensions, frame count — is checked against the clip that arrives.
 - [`bench/`](bench/) holds the independent metric oracle, the vectors it
   authors, and the committed rate–distortion receipts the charts draw.
 - [`inspector/`](inspector/) is the projection room and the cutting room: the
@@ -222,4 +223,4 @@ preflight green.
 
 ---
 
-**Version:** v0.13.7
+**Version:** v0.13.8
