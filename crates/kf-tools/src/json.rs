@@ -17,6 +17,20 @@
 
 use core::fmt;
 
+/// How deeply a document may nest before it is refused.
+///
+/// The parser is recursive, so nesting depth is stack depth. Without a bound,
+/// `[[[[[…` is not a parse error but a stack overflow, and a stack overflow is
+/// not something a caller can catch or report: the process aborts. That would
+/// make the promise at the top of this module false for exactly one class of
+/// malformed input — the class an attacker picks — and `kfmetric repro` takes
+/// a receipt path from the command line.
+///
+/// Sixty-four is far past anything this repository writes. The deepest receipt
+/// it produces nests four levels, and a document that needs more than sixty-four
+/// is not a measurement report.
+const MAX_DEPTH: usize = 64;
+
 /// A parsed JSON value.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Json {
@@ -51,6 +65,7 @@ impl Json {
         let mut parser = Parser {
             bytes: text.as_bytes(),
             at: 0,
+            depth: 0,
         };
         parser.skip_whitespace();
         let value = parser.value()?;
@@ -220,6 +235,7 @@ fn write_string(out: &mut String, text: &str) {
 struct Parser<'a> {
     bytes: &'a [u8],
     at: usize,
+    depth: usize,
 }
 
 impl Parser<'_> {
@@ -256,11 +272,25 @@ impl Parser<'_> {
             Some(b't') => self.expect("true").map(|()| Json::Bool(true)),
             Some(b'f') => self.expect("false").map(|()| Json::Bool(false)),
             Some(b'"') => self.string().map(Json::String),
-            Some(b'[') => self.array(),
-            Some(b'{') => self.object(),
+            Some(b'[') => self.nested(Self::array),
+            Some(b'{') => self.nested(Self::object),
             Some(byte) if byte.is_ascii_digit() || *byte == b'-' => self.number(),
             Some(byte) => Err(self.error(format!("{} does not start a value", *byte as char))),
         }
+    }
+
+    /// Runs one container parser one level down, refusing to go too far.
+    fn nested(
+        &mut self,
+        parse: fn(&mut Self) -> Result<Json, JsonError>,
+    ) -> Result<Json, JsonError> {
+        if self.depth == MAX_DEPTH {
+            return Err(self.error(format!("the document nests deeper than {MAX_DEPTH} levels")));
+        }
+        self.depth += 1;
+        let value = parse(self);
+        self.depth -= 1;
+        value
     }
 
     fn array(&mut self) -> Result<Json, JsonError> {
@@ -498,7 +528,7 @@ pub fn string(value: impl Into<String>) -> Json {
 
 #[cfg(test)]
 mod tests {
-    use super::{Json, JsonError, number, object, string};
+    use super::{Json, JsonError, MAX_DEPTH, number, object, string};
 
     #[test]
     fn the_shapes_round_trip() {
@@ -614,6 +644,38 @@ mod tests {
         let value = object(vec![("a", Json::Array(vec![Json::Number(1.0)]))]);
         assert_eq!(value.to_pretty(2), "{\n  \"a\": [\n    1\n  ]\n}\n");
         assert_eq!(Json::Array(vec![]).to_pretty(2), "[]\n");
+    }
+
+    #[test]
+    fn nesting_is_bounded_and_the_bound_is_reachable() {
+        // Exactly at the bound parses. One level past it is a named error with
+        // an offset, not a stack overflow — which is the whole point, since an
+        // overflow aborts the process and cannot be reported at all.
+        let at_bound = format!("{}{}", "[".repeat(MAX_DEPTH), "]".repeat(MAX_DEPTH));
+        assert!(Json::parse(&at_bound).is_ok());
+
+        let past_bound = format!("{}{}", "[".repeat(MAX_DEPTH + 1), "]".repeat(MAX_DEPTH + 1));
+        let error = Json::parse(&past_bound).unwrap_err();
+        assert!(error.message.contains("nests deeper"), "{error}");
+        assert_eq!(error.offset, MAX_DEPTH);
+
+        // Objects count the same, and a mixture of the two counts as one depth.
+        let mixed = format!(
+            "{}null{}",
+            "{\"a\":[".repeat(MAX_DEPTH / 2),
+            "]}".repeat(MAX_DEPTH / 2)
+        );
+        assert!(Json::parse(&mixed).is_ok());
+
+        // Depth is nesting, not length: a long flat document is not deep, and
+        // a bound that rejected one would be a size limit wearing a disguise.
+        let wide = format!("[{}]", vec!["0"; 10_000].join(","));
+        assert!(Json::parse(&wide).is_ok());
+
+        // Siblings do not accumulate depth either, so a document that opens and
+        // closes many containers in sequence stays inside the bound.
+        let siblings = format!("[{}]", vec!["[[[[0]]]]"; 500].join(","));
+        assert!(Json::parse(&siblings).is_ok());
     }
 
     #[test]

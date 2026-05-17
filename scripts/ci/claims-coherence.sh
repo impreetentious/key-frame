@@ -63,22 +63,35 @@ if [[ -n "$unclaimed" ]]; then
   status=1
 fi
 
-# A row may also cite a single test by name rather than the file holding it,
-# which is the more precise thing to cite and the easier thing to break: a test
-# rename is a local edit that leaves the prose behind, and a path check cannot
-# see it because the file the test lives in still exists. Every backticked
-# `trap_*` name has to be a test that is actually declared somewhere.
+# A row may also cite a single test or a single declared key by name rather
+# than the file holding it, which is the more precise thing to cite and the
+# easier thing to break: a rename is a local edit that leaves the prose behind,
+# and a path check cannot see it because the file still exists.
+#
+# This used to check only `trap_*` names, which covered one naming convention
+# and let every other cited name rot silently — the table already named a test
+# that the check could not see. The pattern is now any backticked identifier of
+# four or more underscore-separated parts, which is what a test name in this
+# repository looks like and what an ordinary word, a type, a lint, or a field
+# name does not. Such a name has to resolve to a declared test or to a key some
+# frozen asset declares; those are the two kinds of thing worth citing this
+# precisely, and anything else the table wants to say belongs in prose.
 absent=""
-while read -r test_name; do
-  [[ -n "$test_name" ]] || continue
-  if ! grep -rqF "fn $test_name(" crates spec conformance 2>/dev/null; then
-    absent+="  $test_name"$'\n'
+while read -r cited; do
+  [[ -n "$cited" ]] || continue
+  if grep -rqF "fn $cited(" crates spec conformance 2>/dev/null; then
+    continue
   fi
-done < <(grep -oE '`trap_[a-z0-9_]+`' "$claims" | tr -d '`' | sort -u)
+  if grep -rqE "^$cited[[:space:]]*=" spec/v1 2>/dev/null; then
+    continue
+  fi
+  absent+="  $cited"$'\n'
+done < <(grep -oE '`[a-z][a-z0-9]*(_[a-z0-9]+){3,}`' "$claims" | tr -d '`' | sort -u)
 
 if [[ -n "$absent" ]]; then
-  echo "claims-coherence: the table names tests that are not declared anywhere"
+  echo "claims-coherence: the table names tests or declarations that do not exist"
   printf '%s' "$absent"
+  echo "  A cited name has to be a test the build runs or a key an asset declares."
   status=1
 fi
 

@@ -4,6 +4,7 @@
 
 mod bdrate;
 mod conformance;
+mod corpus;
 mod hash;
 pub mod json;
 mod metric;
@@ -11,6 +12,7 @@ mod y4m;
 
 pub use bdrate::{BdRateError, RatePoint, bd_rate};
 pub use conformance::{HandVector, Residual, hand_vectors, ladder_levels, transform_schedule};
+pub use corpus::{PinnedClip, pinned_clips};
 pub use hash::sha256_hex;
 pub use json::{Json, JsonError};
 pub use metric::{MetricError, Quality, psnr_y, ssim_y};

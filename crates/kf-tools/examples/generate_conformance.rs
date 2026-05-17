@@ -201,6 +201,51 @@ fn generate(check: bool) -> Result<(), String> {
     } = sink;
     artifacts.push((output_dir.join("manifest.toml"), manifest.into_bytes()));
     if check {
+        // Both directions. Comparing only the artifacts this generator produces
+        // catches a stream that changed and a stream that vanished, and misses
+        // the one that is easiest to create by accident: a stream sitting in
+        // the suite that nothing generates. A rename leaves one behind, and the
+        // gates that glob these directories — the WebAssembly equality check,
+        // the coverage count — would go on decoding a file that is not part of
+        // the frozen record and that no manifest describes.
+        //
+        // `conformance/crashes/` is deliberately outside this: those are
+        // regression streams kept because a fuzzer found them, not vectors this
+        // generator authors, and the cutting room names each one.
+        let mut expected_files: Vec<PathBuf> = artifacts
+            .iter()
+            .map(|(path, _)| path.clone())
+            .filter(|path| path.extension().is_some_and(|extension| extension == "kfv"))
+            .collect();
+        expected_files.sort();
+        let mut present: Vec<PathBuf> = Vec::new();
+        for origin in ["oracle", "hand", "encoder"] {
+            let directory = output_dir.join(origin);
+            let entries = fs::read_dir(&directory)
+                .map_err(|error| format!("{}: {error}", directory.display()))?;
+            for entry in entries {
+                let path = entry.map_err(|error| error.to_string())?.path();
+                if path.extension().is_some_and(|extension| extension == "kfv") {
+                    present.push(path);
+                }
+            }
+        }
+        present.sort();
+        if present != expected_files {
+            let unlisted: Vec<String> = present
+                .iter()
+                .filter(|path| !expected_files.contains(path))
+                .map(|path| path.display().to_string())
+                .collect();
+            return Err(format!(
+                "the conformance suite holds {} stream(s) this generator does not author: {}.\n  \
+                 Every vector in oracle, hand, and encoder is generated and hashed here. A file that is not is decoded by the gates and described by no manifest;\n  \
+                 delete it, or make the generator author it so it gets a hash and a record.",
+                unlisted.len(),
+                unlisted.join(", ")
+            ));
+        }
+
         for (path, expected) in artifacts {
             let actual = fs::read(&path).map_err(|error| format!("{}: {error}", path.display()))?;
             if actual != expected {

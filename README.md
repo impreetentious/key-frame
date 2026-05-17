@@ -46,6 +46,8 @@ specification. Every gate in the repository exists to prove the two agree.
 - Derives its normative document, its numeric tables, and its test vectors from
   the same literal frozen assets, so the specification and the implementation
   cannot drift apart silently.
+- Parses every document it reads rather than searching it, with a bounded
+  reader that answers malformed input with a byte offset instead of a crash.
 - Keeps the entire signal path integer-only: no floating point, no unordered
   iteration, no ambient clocks, no filesystem, no threads, and no numeric cast
   that discards bits without a rule written beside it saying which bits and why.
@@ -223,4 +225,4 @@ preflight green.
 
 ---
 
-**Version:** v0.13.8
+**Version:** v0.13.9

@@ -106,10 +106,19 @@ fn run(arguments: Vec<String>) -> Result<String, String> {
     let clips = {
         let named = repeated(&arguments, "--clip");
         if named.is_empty() {
-            vec![
-                "corpus/clips/akiyo_qcif.y4m".to_owned(),
-                "corpus/clips/foreman_qcif.y4m".to_owned(),
-            ]
+            // The corpus manifest, not a list written here. Naming the clips in
+            // this file made the campaign cover whichever clips were pinned on
+            // the day it was written: a clip added to the corpus would be
+            // fetched, checked for bit-exactness, and measured for rate, and
+            // then quietly left out of the published curves, which say
+            // "corpus" and would have meant a subset of it.
+            kf_tools::pinned_clips(
+                &fs::read_to_string("corpus/manifest.toml")
+                    .map_err(|error| format!("corpus/manifest.toml could not be read: {error}"))?,
+            )?
+            .into_iter()
+            .map(|clip| format!("corpus/clips/{}", clip.file))
+            .collect()
         } else {
             named
         }

@@ -117,6 +117,51 @@ test("a shared link restores the view it encoded", async ({ page }) => {
   await expect(page.locator(".side .card").last().getByText("Position").first()).toBeVisible();
 });
 
+test("every overlay survives being shared on its own", async ({ page }) => {
+  // Overlays travel as a string of initials, which is short and readable in an
+  // address bar and correct only while the initials are distinct. Nothing in
+  // the types enforces that: adding a "prediction" overlay beside "partition"
+  // would give both the letter `p`, and every shared link would quietly turn on
+  // an overlay its author never chose. Round-tripping each one alone is what
+  // makes that a failure instead of a surprise.
+  //
+  // The labels are read from the page rather than listed here, so an overlay
+  // added to the interface is covered without this file being told about it.
+  await page.goto("/");
+  const toggles = page.locator("ul.toggles input[type=checkbox]");
+  // allInnerTexts() reads whatever has rendered so far and never waits, so wait for the toggles.
+  await expect(toggles.first()).toBeVisible();
+  const labels = await page.locator("ul.toggles label").allInnerTexts();
+  expect(labels.length).toBeGreaterThan(1);
+
+  for (const label of labels) {
+    const wanted = label.trim();
+    await page.goto("/");
+    for (const other of labels) {
+      const box = page.getByLabel(other.trim());
+      if (other.trim() === wanted) await box.check();
+      else await box.uncheck();
+    }
+
+    const shared = page.url();
+    expect(shared).toContain("#");
+
+    // A blank page in between, because navigating to a URL that differs only
+    // in its fragment is a same-document navigation: the page would keep the
+    // state this loop just set and the assertions below would be checking the
+    // checkboxes against themselves.
+    await page.goto("about:blank");
+    await page.goto(shared);
+
+    // Exactly one box comes back checked, and it is the one that was shared.
+    await expect(page.getByLabel(wanted)).toBeChecked();
+    const checked = await toggles.evaluateAll((boxes) =>
+      boxes.filter((box) => (box as HTMLInputElement).checked).length,
+    );
+    expect(checked, `sharing "${wanted}" restored ${checked} overlays`).toBe(1);
+  }
+});
+
 test("the cutting room lists findings and opens their streams", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Cutting room" }).click();
