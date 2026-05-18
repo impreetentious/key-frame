@@ -6,10 +6,11 @@
 //! runs the same encodes again and compares every recorded field — coded size,
 //! stream hash, both metrics — and exits non-zero on the first that has moved.
 //!
-//! It also recomputes the BD-rate of each ablation against the full toolset,
-//! which is the figure the charts page actually draws. That number is derived
-//! rather than stored, so it cannot go stale on its own; what it can do is stop
-//! being computable, which is what the refusals in the integrator are for.
+//! It also recomputes the BD-rate of each ablation against the full toolset and
+//! compares it against the figure the receipt records. That figure is the one
+//! the charts page draws — the page states what the campaign measured rather
+//! than re-deriving it — so it is checked here like every other published
+//! number, including when what the campaign recorded was a refusal.
 
 use std::{env, fs, process::ExitCode};
 
@@ -295,10 +296,23 @@ fn check_regression(current: &Json, baseline: &Json, allowance: f64) -> Result<S
 /// which is what turning a working tool off is supposed to do.
 fn bd_rates(curves: &[Json]) -> Result<String, String> {
     let mut lines = String::new();
+    let mut moved = Vec::new();
     for curve in curves {
         let clip = text_field(curve, "clip")?;
         let toolset = text_field(curve, "toolset")?;
+        let recorded_percent = curve.get("bd_rate_percent").and_then(Json::as_f64);
+        let recorded_refusal = curve.get("bd_rate_refused").and_then(Json::as_str);
+
+        // The baseline is not compared against itself, so it records nothing. A
+        // figure sitting on it would be a comparison against something this
+        // never checks, which is the quietest way for a wrong number to survive.
         if toolset == "full" {
+            if recorded_percent.is_some() || recorded_refusal.is_some() {
+                moved.push(format!(
+                    "{clip}/{toolset}: the baseline curve records a bitrate difference \
+                     against itself"
+                ));
+            }
             continue;
         }
         let Some(baseline) = curves.iter().find(|other| {
@@ -307,9 +321,58 @@ fn bd_rates(curves: &[Json]) -> Result<String, String> {
         }) else {
             continue;
         };
-        let percent = bd_rate(&rate_points(baseline)?, &rate_points(curve)?)
-            .map_err(|error| format!("{clip}/{toolset}: {error}"))?;
-        lines.push_str(&format!("\n  {clip} {toolset}: {percent:+.2}% bitrate"));
+
+        // The receipt carries this figure because the projection room draws it
+        // rather than deriving it. A published number nothing re-derives is a
+        // number that stops being true quietly, so it is checked here like
+        // every other figure in the document — and a recorded refusal is
+        // checked the same way, because "these curves no longer overlap" is a
+        // claim about the encoder too.
+        match bd_rate(&rate_points(baseline)?, &rate_points(curve)?) {
+            Ok(percent) => {
+                let Some(recorded) = recorded_percent else {
+                    moved.push(match recorded_refusal {
+                        Some(reason) => format!(
+                            "{clip}/{toolset}: the receipt records the refusal {reason:?}, \
+                             but the figure is computable and is {percent}"
+                        ),
+                        None => {
+                            format!("{clip}/{toolset}: the receipt records no bitrate difference")
+                        }
+                    });
+                    continue;
+                };
+                let tolerance = 1e-9 * recorded.abs().max(percent.abs()).max(1.0);
+                if (recorded - percent).abs() > tolerance {
+                    moved.push(format!(
+                        "{clip}/{toolset}: bd_rate_percent recorded {recorded}, found {percent}"
+                    ));
+                }
+                lines.push_str(&format!("\n  {clip} {toolset}: {percent:+.2}% bitrate"));
+            }
+            Err(error) => {
+                let found = error.to_string();
+                match recorded_refusal {
+                    Some(reason) if reason == found => {
+                        lines.push_str(&format!("\n  {clip} {toolset}: refused — {found}"));
+                    }
+                    Some(reason) => moved.push(format!(
+                        "{clip}/{toolset}: bd_rate_refused recorded {reason:?}, found {found:?}"
+                    )),
+                    None => moved.push(format!(
+                        "{clip}/{toolset}: the figure is no longer computable ({found}), \
+                         but the receipt states one"
+                    )),
+                }
+            }
+        }
+    }
+    if !moved.is_empty() {
+        return Err(format!(
+            "{} bitrate difference(s) no longer reproduce:\n  {}",
+            moved.len(),
+            moved.join("\n  ")
+        ));
     }
     Ok(lines)
 }

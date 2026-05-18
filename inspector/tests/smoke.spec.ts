@@ -212,6 +212,25 @@ test("the rate–distortion tab draws real curves and names its ablations", asyn
   expect(figures).toHaveLength(5);
   for (const figure of figures) expect(figure.trim()).not.toBe("");
 
+  // And the figures are the receipt's, not the page's. The check above would
+  // pass for a page that recomputed the bitrate difference from the points and
+  // quietly disagreed with the receipt it draws, which is the whole failure the
+  // arithmetic was removed from this bundle to prevent. So the receipt the page
+  // itself loaded is fetched and every rendered cell is matched against it.
+  const expected = await page.evaluate(async () => {
+    const receipt = await (await fetch("./rd-campaign.json")).json();
+    const first = receipt.curves[0].clip;
+    return receipt.curves
+      .filter((curve: any) => curve.clip === first && curve.toolset !== "full")
+      .map((curve: any) =>
+        typeof curve.bd_rate_percent === "number"
+          ? `${curve.bd_rate_percent >= 0 ? "+" : ""}${curve.bd_rate_percent.toFixed(2)}%`
+          : String(curve.bd_rate_refused),
+      );
+  });
+  expect(expected).toHaveLength(5);
+  expect(figures.map((figure) => figure.trim())).toEqual(expected);
+
   // Switching the metric has to redraw rather than leave the previous chart up.
   // The radio is addressed by role because the charts carry the metric in their
   // own accessible names, and a label lookup would match three things.

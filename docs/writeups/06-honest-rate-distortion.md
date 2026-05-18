@@ -82,11 +82,25 @@ that was never sampled is not.
 
 The Python oracle integrates each cubic piece with two-point Gauss–Legendre,
 which is exact for cubics; the Rust evaluates the Hermite antiderivative in
-closed form. Same integral, no shared arithmetic. And because the projection
-room draws these curves in a browser, there is a third implementation in
-TypeScript — which agreed with the Rust to the second decimal on every figure
-the first time it ran, which was the single most reassuring moment in building
-the page.
+closed form. Same integral, no shared arithmetic. They check each other on
+committed vectors, slope for slope and area for area, on every run.
+
+There was briefly a third implementation, in TypeScript, because the projection
+room draws these curves in a browser and it seemed natural for the page to
+compute what it drew. It agreed with the Rust to the second decimal the first
+time it ran, which was the most reassuring moment in building the page and, on
+reflection, the wrong lesson to take from it. Two implementations exist in order
+to disagree usefully: something compares them, and a disagreement fails the
+build. A third that nothing compares against is not a third check. It is a
+second answer to the same question, sitting where a reader would assume the
+first one had been verified, with no way to notice the day the two part.
+
+So it is gone. The campaign computes each bitrate difference, writes it into the
+receipt beside the points it came from, and `rd_verify` recomputes it on every
+run; the page states what the receipt says. The browser smoke suite fetches that
+receipt and matches every rendered cell against it, which is a weaker-sounding
+check than a third implementation and a much stronger one — it can actually
+fail.
 
 ## The comparison this project will not make
 

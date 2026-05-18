@@ -10,6 +10,10 @@
 //!     a rate–distortion result and be nothing of the kind.
 //!   * Every curve carries the full quality ladder. A curve missing a point
 //!     still produces a BD-rate, over a shorter interval, without saying so.
+//!   * Every ablation curve states its bitrate difference against the full
+//!     toolset, and names the metric that difference is measured in. The
+//!     projection room draws these rather than deriving them, so a curve that
+//!     silently carried none would reach the page as an empty cell.
 
 use std::{fs, path::PathBuf};
 
@@ -173,5 +177,165 @@ fn three_ablation_points_are_refused_as_a_curve() {
     assert!(
         bd_rate(&three, &full).is_err(),
         "three points produced a bitrate difference"
+    );
+}
+
+#[test]
+fn every_ablation_curve_states_its_bitrate_difference() {
+    // The page draws what the receipt says. A curve with neither field would
+    // render as "not recorded", which is honest but is not a measurement, and a
+    // curve with both would leave the page choosing between two answers.
+    let document = receipt();
+    let metric = document
+        .get("metrics")
+        .and_then(|metrics| metrics.get("bd_rate"))
+        .and_then(Json::as_str);
+    assert_eq!(
+        metric,
+        Some("psnr-y"),
+        "the receipt does not name the metric its bitrate differences are measured in"
+    );
+
+    let mut ablations = 0_usize;
+    for curve in array(&document, "curves") {
+        let toolset = curve.get("toolset").and_then(Json::as_str).unwrap_or("?");
+        let label = format!(
+            "{}/{toolset}",
+            curve.get("clip").and_then(Json::as_str).unwrap_or("?")
+        );
+        let percent = curve.get("bd_rate_percent").and_then(Json::as_f64);
+        let refused = curve.get("bd_rate_refused").and_then(Json::as_str);
+
+        if toolset == "full" {
+            assert!(
+                percent.is_none() && refused.is_none(),
+                "{label} is the baseline and carries a bitrate difference against itself"
+            );
+            continue;
+        }
+
+        assert!(
+            percent.is_some() != refused.is_some(),
+            "{label} states {} bitrate differences, not one",
+            usize::from(percent.is_some()) + usize::from(refused.is_some())
+        );
+        if let Some(value) = percent {
+            assert!(value.is_finite(), "{label} records a non-finite figure");
+        }
+        ablations += 1;
+    }
+    assert!(
+        ablations >= 5,
+        "the receipt carries {ablations} ablation curve(s), too few to be the campaign"
+    );
+}
+
+#[test]
+fn every_recorded_bitrate_difference_follows_from_the_recorded_points() {
+    // Two different questions get two different checks. `rd_verify` re-encodes
+    // and asks whether the points still come out of the encoder, which costs
+    // minutes and belongs in a gate. This asks whether the figure the receipt
+    // publishes follows from the points the receipt publishes, which is
+    // arithmetic over a committed file and costs nothing — so the failure where
+    // a figure and its own curve part company is caught by `cargo test` rather
+    // than only by the gate that re-encodes.
+    let document = receipt();
+    let curves = array(&document, "curves");
+    let points_of = |curve: &Json| -> Vec<RatePoint> {
+        array(curve, "points")
+            .iter()
+            .map(|point| RatePoint {
+                rate: point.get("rate").and_then(Json::as_f64).expect("a rate"),
+                quality: point
+                    .get("quality")
+                    .and_then(Json::as_f64)
+                    .expect("a quality"),
+            })
+            .collect()
+    };
+    let named = |curve: &Json, key: &str| -> String {
+        curve
+            .get(key)
+            .and_then(Json::as_str)
+            .unwrap_or("?")
+            .to_owned()
+    };
+
+    let mut compared = 0_usize;
+    for curve in curves {
+        let toolset = named(curve, "toolset");
+        if toolset == "full" {
+            continue;
+        }
+        let clip = named(curve, "clip");
+        let baseline = curves
+            .iter()
+            .find(|other| named(other, "clip") == clip && named(other, "toolset") == "full")
+            .unwrap_or_else(|| {
+                panic!("{clip}/{toolset} has no baseline curve to be measured against")
+            });
+
+        let recorded = curve
+            .get("bd_rate_percent")
+            .and_then(Json::as_f64)
+            .unwrap_or_else(|| panic!("{clip}/{toolset} records no bitrate difference"));
+        let found = bd_rate(&points_of(baseline), &points_of(curve))
+            .unwrap_or_else(|error| panic!("{clip}/{toolset}: {error}"));
+        let tolerance = 1e-9 * recorded.abs().max(found.abs()).max(1.0);
+        assert!(
+            (recorded - found).abs() <= tolerance,
+            "{clip}/{toolset}: the receipt records {recorded} and its own points give {found}"
+        );
+        compared += 1;
+    }
+    assert!(compared >= 5, "only {compared} figure(s) were re-derived");
+}
+
+#[test]
+fn a_bitrate_difference_that_does_not_follow_from_its_points_is_caught() {
+    // The check above with the answer moved, because a check that cannot fail
+    // is decoration. One point of one ablation curve is shifted and the figure
+    // recorded beside it is required to stop following from it.
+    let document = receipt();
+    let curves = array(&document, "curves");
+    let points_of = |curve: &Json| -> Vec<RatePoint> {
+        array(curve, "points")
+            .iter()
+            .map(|point| RatePoint {
+                rate: point.get("rate").and_then(Json::as_f64).expect("a rate"),
+                quality: point
+                    .get("quality")
+                    .and_then(Json::as_f64)
+                    .expect("a quality"),
+            })
+            .collect()
+    };
+    fn toolset_of(curve: &Json) -> &str {
+        curve.get("toolset").and_then(Json::as_str).unwrap_or("?")
+    }
+
+    let baseline = curves
+        .iter()
+        .find(|curve| toolset_of(curve) == "full")
+        .expect("a baseline curve");
+    let ablation = curves
+        .iter()
+        .find(|curve| {
+            toolset_of(curve) != "full"
+                && curve.get("clip").and_then(Json::as_str)
+                    == baseline.get("clip").and_then(Json::as_str)
+        })
+        .expect("an ablation curve on the same clip");
+
+    let recorded = ablation
+        .get("bd_rate_percent")
+        .and_then(Json::as_f64)
+        .expect("a recorded figure");
+    let mut moved = points_of(ablation);
+    moved[0].rate *= 1.10;
+    let found = bd_rate(&points_of(baseline), &moved).expect("the moved curve still integrates");
+    assert!(
+        (recorded - found).abs() > 1e-9 * recorded.abs().max(found.abs()).max(1.0),
+        "a ten percent shift in a measured rate left the bitrate difference unchanged at {recorded}"
     );
 }

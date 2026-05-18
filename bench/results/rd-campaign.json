@@ -1,10 +1,11 @@
 {
   "format": "key-frame-rd-campaign-v1",
-  "encoder_version": "0.13.0",
+  "encoder_version": "0.13.9",
   "config_sha256": "a482de9284d3789b6cfc021c2008b6d451caf4878325cd6cf554b6c05830896f",
   "metrics": {
     "psnr": "psnr-y",
     "ssim": "ssim-y",
+    "bd_rate": "psnr-y",
     "note": "Luma only, cropped to the displayed picture, defined in bench/metric_oracle.py and checked against it on every run."
   },
   "settings": {
@@ -138,7 +139,8 @@
           "lossless": false,
           "stream_sha256": "0940224180fe570571cc6cbca09900b9f7e52d87c2ff0b8b368f00d9f42afafe"
         }
-      ]
+      ],
+      "bd_rate_percent": -0.026114075929017933
     },
     {
       "clip": "akiyo_qcif",
@@ -198,7 +200,8 @@
           "lossless": false,
           "stream_sha256": "27c87e0b4dac9260f306ce3b56be4906bff3fe79902e2c6a58137442565c306d"
         }
-      ]
+      ],
+      "bd_rate_percent": 8.01615387576775
     },
     {
       "clip": "akiyo_qcif",
@@ -258,7 +261,8 @@
           "lossless": false,
           "stream_sha256": "fcbb1a2ce212d2c42d53a7a14bc689068b11bdeded755568173eabb7b8c06b33"
         }
-      ]
+      ],
+      "bd_rate_percent": 1239.163225848433
     },
     {
       "clip": "akiyo_qcif",
@@ -318,7 +322,8 @@
           "lossless": false,
           "stream_sha256": "6c890f6a2f58afa1d40728327287011d61bb77f8babf6bc6d1a056e20e11b999"
         }
-      ]
+      ],
+      "bd_rate_percent": 14.539534547697453
     },
     {
       "clip": "akiyo_qcif",
@@ -378,7 +383,8 @@
           "lossless": false,
           "stream_sha256": "03642a096a24ce9ecd9bb9c6668d997e5bd6b46582e23627d8daf3568e121d0d"
         }
-      ]
+      ],
+      "bd_rate_percent": 32.314728508152825
     },
     {
       "clip": "foreman_qcif",
@@ -498,7 +504,8 @@
           "lossless": false,
           "stream_sha256": "cbc3f56473833179894949e5b9ccaf60358fd9b8d0361bc59f206aa41eb9ff50"
         }
-      ]
+      ],
+      "bd_rate_percent": 0.21307132920938
     },
     {
       "clip": "foreman_qcif",
@@ -558,7 +565,8 @@
           "lossless": false,
           "stream_sha256": "55af3216764d1ba994fbd40428bd2ec5789e3225fe52799dc6a87f440105e2a4"
         }
-      ]
+      ],
+      "bd_rate_percent": 6.811905355730463
     },
     {
       "clip": "foreman_qcif",
@@ -618,7 +626,8 @@
           "lossless": false,
           "stream_sha256": "42df0c913a5af3f11d777daccaaeaa50639fcbdbbebc8d8b0ca3242df370e902"
         }
-      ]
+      ],
+      "bd_rate_percent": 490.06367758861893
     },
     {
       "clip": "foreman_qcif",
@@ -678,7 +687,8 @@
           "lossless": false,
           "stream_sha256": "78f2d9ec603757cd4047c0b61e1234b946cc35723ad27d7d82ee17fe70871c15"
         }
-      ]
+      ],
+      "bd_rate_percent": 34.23270781192711
     },
     {
       "clip": "foreman_qcif",
@@ -738,7 +748,8 @@
           "lossless": false,
           "stream_sha256": "cc1423d15f4f4a5b49dd4f5445f7b7c03ef1f32f905554fd89aab8d3afc2d705"
         }
-      ]
+      ],
+      "bd_rate_percent": 70.038217942223
     }
   ],
   "rate_control": {

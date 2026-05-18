@@ -25,10 +25,13 @@ use kf_enc::{Encoder, Toolset};
 use kf_frame::Frame;
 use kf_ref::ReferenceDecoder;
 use kf_tools::{
-    Json, decode_y4m,
+    Json, RatePoint, bd_rate, decode_y4m,
     json::{number, object, string},
     psnr_y, sha256_hex, ssim_y,
 };
+
+/// The toolset every other one is measured against: nothing switched off.
+const BASELINE_TOOLSET: &str = "full";
 
 /// The quality ladder every curve is built from.
 ///
@@ -171,6 +174,19 @@ fn run(arguments: Vec<String>) -> Result<String, String> {
         }
     }
 
+    // What each ablation costs, computed here rather than wherever the figure
+    // is eventually shown, and once every curve exists so each one can find its
+    // own clip's baseline.
+    //
+    // The projection room used to derive these itself, from a third
+    // implementation of the definition written in TypeScript. Two
+    // implementations exist to disagree usefully — the Rust and the Python
+    // oracle check each other on committed vectors — but a third one that
+    // nothing compares against is not verification, it is a second answer to
+    // the same question with no way to notice when they part. The page draws
+    // what the receipt says.
+    annotate_bd_rate(&mut curves)?;
+
     // The configuration hash covers what a reader would have to match to get
     // these numbers: the ladder, the clips by content, the toolsets, and the GOP
     // settings. Two campaigns with the same hash asked the same question.
@@ -208,6 +224,10 @@ fn run(arguments: Vec<String>) -> Result<String, String> {
             object(vec![
                 ("psnr", string("psnr-y")),
                 ("ssim", string("ssim-y")),
+                // BD-rate is measured over `quality`, which is the luma PSNR.
+                // Naming it here means a reader never has to infer which metric
+                // a bitrate difference is "at equal quality" in.
+                ("bd_rate", string("psnr-y")),
                 (
                     "note",
                     string(
@@ -377,6 +397,73 @@ fn measure_point(
         ("lossless", Json::Bool(psnr.lossless)),
         ("stream_sha256", string(sha256_hex(&encoded.bytes))),
     ]))
+}
+
+/// Records each curve's bitrate difference against the full toolset.
+///
+/// The comparison is over `quality`, which is the luma PSNR the campaign also
+/// records as `psnr_y`; the receipt names the metric so a reader never has to
+/// infer it. A refusal is written as prose in place of a figure, because a
+/// blank cell and "these curves never overlap" are different facts and the
+/// second one is the interesting one.
+fn annotate_bd_rate(curves: &mut [Json]) -> Result<(), String> {
+    let rate_points = |curve: &Json| -> Result<Vec<RatePoint>, String> {
+        curve
+            .get("points")
+            .and_then(Json::as_array)
+            .ok_or_else(|| "a curve has no points".to_owned())?
+            .iter()
+            .map(|point| {
+                Ok(RatePoint {
+                    rate: point
+                        .get("rate")
+                        .and_then(Json::as_f64)
+                        .ok_or_else(|| "a point has no rate".to_owned())?,
+                    quality: point
+                        .get("quality")
+                        .and_then(Json::as_f64)
+                        .ok_or_else(|| "a point has no quality".to_owned())?,
+                })
+            })
+            .collect()
+    };
+    let toolset_of = |curve: &Json| -> String {
+        curve
+            .get("toolset")
+            .and_then(Json::as_str)
+            .unwrap_or_default()
+            .to_owned()
+    };
+    let clip_of = |curve: &Json| -> String {
+        curve
+            .get("clip")
+            .and_then(Json::as_str)
+            .unwrap_or_default()
+            .to_owned()
+    };
+
+    for index in 0..curves.len() {
+        if toolset_of(&curves[index]) == BASELINE_TOOLSET {
+            continue;
+        }
+        let clip = clip_of(&curves[index]);
+        let baseline = curves
+            .iter()
+            .find(|curve| clip_of(curve) == clip && toolset_of(curve) == BASELINE_TOOLSET);
+        let Some(baseline) = baseline else {
+            continue;
+        };
+        let baseline_points = rate_points(baseline)?;
+        let candidate_points = rate_points(&curves[index])?;
+        let entry = match bd_rate(&baseline_points, &candidate_points) {
+            Ok(percent) => ("bd_rate_percent", number(percent)),
+            Err(error) => ("bd_rate_refused", string(error.to_string())),
+        };
+        if let Json::Object(members) = &mut curves[index] {
+            members.push((entry.0.to_owned(), entry.1));
+        }
+    }
+    Ok(())
 }
 
 /// Average-bitrate accuracy for one clip, at three targets.

@@ -63,7 +63,9 @@ specification. Every gate in the repository exists to prove the two agree.
   pre-decoded picture.
 - Measures what each encoder tool is worth by turning it off and encoding
   again, publishes the curves with the configuration that produced them, and
-  re-derives every point on demand. The ablations narrow what the encoder will
+  re-derives every point on demand. The page that draws them computes none of
+  them: every figure it shows, bitrate differences included, is one the campaign
+  measured and the verifier rechecks. The ablations narrow what the encoder will
   choose and never what the bitstream means, so every measured stream is an
   ordinary file both decoders reconstruct bit-exactly.
 - Verifies itself with one command that runs every gate continuous integration
@@ -225,4 +227,4 @@ preflight green.
 
 ---
 
-**Version:** v0.13.9
+**Version:** v0.13.10

@@ -5,7 +5,6 @@ import {
   type Curve,
   type RateControlClip,
   type RatePoint,
-  bdRate,
   clipsOf,
   parseCampaign,
 } from "./bench";
@@ -167,7 +166,7 @@ function ClipSection({
         ) : null}
       </h3>
       <RdChart curves={curves} metric={metric} />
-      {baseline ? <AblationTable curves={curves} baseline={baseline} /> : null}
+      {baseline ? <AblationTable curves={curves} /> : null}
     </article>
   );
 }
@@ -399,13 +398,11 @@ function RateControlTable({ clips }: { clips: RateControlClip[] }) {
 }
 
 /// What each tool is worth, as a bitrate difference against the full toolset.
-function AblationTable({
-  curves,
-  baseline,
-}: {
-  curves: Curve[];
-  baseline: Curve;
-}) {
+///
+/// Every figure here is read out of the receipt. The campaign measured it, and
+/// `rd_verify` re-derives it on every run, so a number that stopped being true
+/// fails the build rather than reaching this table.
+function AblationTable({ curves }: { curves: Curve[] }) {
   return (
     <table className="ablations">
       <caption>
@@ -424,7 +421,7 @@ function AblationTable({
         {curves
           .filter((curve) => curve.toolset !== "full")
           .map((curve) => {
-            const result = bdRate(baseline.points, curve.points);
+            const result = curve.bdRate;
             return (
               <tr key={curve.toolset}>
                 <th scope="row">
@@ -440,14 +437,16 @@ function AblationTable({
                 </th>
                 <td
                   className={
-                    "percent" in result && result.percent < 0
+                    result !== null && "percent" in result && result.percent < 0
                       ? "negative"
                       : undefined
                   }
                 >
-                  {"percent" in result
-                    ? `${result.percent >= 0 ? "+" : ""}${result.percent.toFixed(2)}%`
-                    : result.refused}
+                  {result === null
+                    ? "not recorded"
+                    : "percent" in result
+                      ? `${result.percent >= 0 ? "+" : ""}${result.percent.toFixed(2)}%`
+                      : result.refused}
                 </td>
                 <td className="quiet">{TOOLSET_NOTES[curve.toolset] ?? ""}</td>
               </tr>
