@@ -89,10 +89,16 @@ function asPair(record: Record<string, unknown>, key: string, where: string): [n
     throw new ReportError(`${where}.${key} is not a pair`);
   }
   const [first, second] = value;
-  if (typeof first !== "number" || typeof second !== "number") {
+  // Finite, not merely `number`. `typeof NaN` is `"number"`, and this is the
+  // one parser standing between the module's text and a canvas coordinate:
+  // a pair that reached `blockAt` as `[NaN, NaN]` would match no sample and
+  // draw no glyph, which reads on the page as a block that cost nothing rather
+  // than as a report this page could not trust. Every scalar field is already
+  // held to this; a position and a motion vector were not.
+  if (!Number.isFinite(first) || !Number.isFinite(second)) {
     throw new ReportError(`${where}.${key} is not a pair of numbers`);
   }
-  return [first, second];
+  return [first as number, second as number];
 }
 
 function parsePrediction(value: unknown, where: string): Prediction {
@@ -147,7 +153,9 @@ export function parseReport(value: unknown): FrameReport {
   const frame = asRecord(root["frame"], "report.frame");
   const flags = asRecord(frame["flags"], "report.frame.flags");
   const mismatch = frame["first_mismatch_offset"];
-  if (mismatch !== null && typeof mismatch !== "number") {
+  // Finite for the same reason a position is: a mismatch offset is the byte a
+  // reader is told to look at, and `NaN` there names no byte.
+  if (mismatch !== null && !Number.isFinite(mismatch)) {
     throw new ReportError("report.frame.first_mismatch_offset is neither null nor a number");
   }
   return {
@@ -159,7 +167,7 @@ export function parseReport(value: unknown): FrameReport {
     inputPayloadLen: asNumber(frame, "input_payload_len", "report.frame"),
     canonicalReplayPayloadLen: asNumber(frame, "canonical_replay_payload_len", "report.frame"),
     canonicalPayloadMatch: asBoolean(frame, "canonical_payload_match", "report.frame"),
-    firstMismatchOffset: mismatch,
+    firstMismatchOffset: mismatch as number | null,
     frameFlushBytes: asNumber(frame, "frame_flush_bytes", "report.frame"),
     superblocks: asArray(frame, "superblocks", "report.frame").map((superblock, index) =>
       parseSuperblock(superblock, `report.frame.superblocks[${index}]`),

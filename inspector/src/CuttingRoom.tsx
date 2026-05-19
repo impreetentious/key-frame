@@ -16,6 +16,43 @@ export interface Finding {
 
 const CATALOGUE_URL = "./cutting-room.json";
 
+/// Every field of every entry, checked before any of it is rendered.
+///
+/// The collector already refuses an entry missing a field, so nothing this
+/// throws should ever reach a visitor. That is the argument for checking, not
+/// against it: this is the last place before a catalogue entry becomes a bug
+/// report someone reads, and a missing field would render as an empty cell in a
+/// list whose whole claim is that every finding here is real and reproducible.
+/// The other two readers on this page hold their documents to the same rule.
+export function parseCatalogue(data: unknown): Finding[] {
+  const entries = (data as { entries?: unknown } | null)?.entries;
+  if (!Array.isArray(entries)) throw new Error("the catalogue has no entries array");
+  return entries.map((raw, index) => {
+    const entry = raw as Record<string, unknown>;
+    const field = (name: keyof Finding): string => {
+      const value = entry[name];
+      if (typeof value !== "string" || value.length === 0) {
+        throw new Error(`catalogue entry ${index} has no ${name}`);
+      }
+      return value;
+    };
+    // `body` alone may be empty: an entry whose story is still being written is
+    // a thin finding, not a malformed one.
+    const body = entry["body"];
+    if (typeof body !== "string") throw new Error(`catalogue entry ${index} has no body`);
+    return {
+      id: field("id"),
+      crate: field("crate"),
+      foundBy: field("foundBy"),
+      fixedIn: field("fixedIn"),
+      regression: field("regression"),
+      stream: field("stream"),
+      title: field("title"),
+      body,
+    };
+  });
+}
+
 export function CuttingRoom({ onOpenStream }: { onOpenStream: (url: string, label: string) => void }) {
   const [findings, setFindings] = useState<Finding[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -29,8 +66,7 @@ export function CuttingRoom({ onOpenStream }: { onOpenStream: (url: string, labe
         if (!response.ok) throw new Error(`the catalogue did not load (${response.status})`);
         const data: unknown = await response.json();
         if (cancelled) return;
-        const entries = (data as { entries?: Finding[] }).entries;
-        if (!Array.isArray(entries)) throw new Error("the catalogue has no entries array");
+        const entries = parseCatalogue(data);
         setFindings(entries);
         setOpenId(entries[0]?.id ?? null);
       } catch (caught) {

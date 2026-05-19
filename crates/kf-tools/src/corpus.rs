@@ -11,6 +11,13 @@
 //! and refuses anything else rather than guessing, because a clip silently
 //! dropped from a measurement is a published number describing a corpus that
 //! was never measured.
+//!
+//! Two readers of one normative file only mean something if something compares
+//! them, which is the same argument the two decoders rest on.
+//! `tests/corpus_manifest.rs` drives this one and the shell one over the
+//! committed manifest and over the shapes where they could plausibly part —
+//! a second table after the last clip, indented keys, a trailing comment — and
+//! requires the same answer from each. They did part on all three.
 
 /// One clip the corpus manifest pins.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -60,7 +67,7 @@ pub fn pinned_clips(manifest: &str) -> Result<Vec<PinnedClip>, String> {
         let Some(partial) = current.as_mut() else {
             continue;
         };
-        partial.set(key.trim(), value.trim().trim_matches('"'))?;
+        partial.set(key.trim(), &unquote(value))?;
     }
     if let Some(partial) = current.take() {
         clips.push(partial.finish()?);
@@ -70,6 +77,28 @@ pub fn pinned_clips(manifest: &str) -> Result<Vec<PinnedClip>, String> {
         return Err("corpus manifest declares no clips".to_owned());
     }
     Ok(clips)
+}
+
+/// The text of one `key = value` right-hand side.
+///
+/// A value is either a quoted string or a bare integer, and a `#` outside
+/// quotes begins a comment. Trimming quote characters off both ends — which is
+/// what this did — read `name = "one" # the static clip` as `one" # the static
+/// clip`, because the trailing character was not a quote and nothing stripped
+/// the comment. The shell reader applies the same rule, and the two are
+/// compared on exactly these shapes.
+fn unquote(value: &str) -> String {
+    let value = value.trim();
+    if let Some(rest) = value.strip_prefix('"') {
+        return match rest.split_once('"') {
+            Some((inside, _)) => inside.to_owned(),
+            None => rest.to_owned(),
+        };
+    }
+    match value.split_once('#') {
+        Some((before, _)) => before.trim_end().to_owned(),
+        None => value.to_owned(),
+    }
 }
 
 #[derive(Default)]
@@ -118,7 +147,7 @@ impl Partial {
 
 #[cfg(test)]
 mod tests {
-    use super::{PinnedClip, pinned_clips};
+    use super::{PinnedClip, pinned_clips, unquote};
 
     const MANIFEST: &str = include_str!("../../../corpus/manifest.toml");
 
@@ -176,6 +205,62 @@ mod tests {
                 frames: 300,
             }]
         );
+    }
+
+    #[test]
+    fn a_trailing_comment_is_not_part_of_the_value() {
+        // Both halves of the rule. The quoted form ends at its closing quote,
+        // so a `#` after it is a comment; the bare form ends at the first `#`.
+        // Read the other way round, `frames` became a frame count with prose
+        // in it and `name` kept a stray quote.
+        let manifest = concat!(
+            "[[clips]]\n",
+            "name = \"one\" # the static clip\n",
+            "file = \"one.y4m\"\n",
+            "width = 176\n",
+            "height = 144\n",
+            "frames = 300 # the whole sequence\n",
+        );
+        assert_eq!(
+            pinned_clips(manifest).unwrap(),
+            vec![PinnedClip {
+                name: "one".to_owned(),
+                file: "one.y4m".to_owned(),
+                width: 176,
+                height: 144,
+                frames: 300,
+            }]
+        );
+    }
+
+    #[test]
+    fn a_hash_inside_a_quoted_value_is_kept() {
+        // A `#` only begins a comment outside quotes. Stripping from the first
+        // one anywhere would truncate any address carrying a fragment.
+        assert_eq!(
+            unquote(" \"https://example.test/a.y4m#part\" "),
+            "https://example.test/a.y4m#part"
+        );
+        assert_eq!(unquote(" 300 # prose "), "300");
+        assert_eq!(unquote(" \"unterminated"), "unterminated");
+    }
+
+    #[test]
+    fn a_table_after_the_last_clip_does_not_extend_it() {
+        // The shape the shell reader used to get wrong: keys under a later
+        // table were attributed to the clip above it.
+        let manifest = concat!(
+            "[[clips]]\n",
+            "name = \"one\"\n",
+            "file = \"one.y4m\"\n",
+            "width = 176\n",
+            "height = 144\n",
+            "frames = 300\n",
+            "\n",
+            "[fetch]\n",
+            "frames = 999\n",
+        );
+        assert_eq!(pinned_clips(manifest).unwrap()[0].frames, 300);
     }
 
     #[test]

@@ -5,11 +5,12 @@
 // object is the whole loading story. Everything below is the other half of the
 // contract written at the top of `crates/kf-wasm/src/abi.rs`.
 //
-// One rule governs every read: take the memory view *after* the call that
-// produced the bytes, never before. Any allocation inside the module may have
-// grown its memory, and a `Uint8Array` over the old buffer is detached the
-// moment that happens. Every read here goes through `readBytes`, which is the
-// only place that touches `memory.buffer`.
+// One rule governs every view of the module's memory: take it *after* the call
+// that decided where the bytes are, never before. Any allocation inside the
+// module may have grown its memory, and a `Uint8Array` over the old buffer is
+// detached the moment that happens. Every read goes through `readBytes`, which
+// copies; the single write is the one in `open`, taken after `kf_alloc` has
+// returned the offset it is writing to.
 
 const ABI_VERSION = 1;
 
@@ -197,9 +198,10 @@ export class Decoder {
     return this.info;
   }
 
-  /// The only place that touches the module's memory buffer, and it always
+  /// The only place that reads the module's memory buffer, and it always
   /// copies: a view handed to a caller would be silently detached by the next
-  /// allocation.
+  /// allocation. The one write lives in `open`, where the offset comes from the
+  /// `kf_alloc` immediately above it.
   private readBytes(offset: number, length: number): Uint8Array {
     return new Uint8Array(this.exports.memory.buffer, offset, length).slice();
   }
