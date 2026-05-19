@@ -15,7 +15,12 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: actions-rust-lang/setup-rust-toolchain@2b1f5e9b395427c92ee4e3331786ca3c37afe2d7 # v1.16.0
-      - run: cargo run --release --locked -p kf-fuzz --bin kf-fuzz-campaign -- --iterations 20000000
+      # No iteration count: the campaign binary defaults to the budget
+      # `spec/v1/constants.toml` declares, and the crate is held to that
+      # declaration by test. Naming the number here made it a second copy that
+      # nothing compared — a raised budget would have left this job running the
+      # old one and reporting success.
+      - run: cargo run --release --locked -p kf-fuzz --bin kf-fuzz-campaign
 
   # The published rate-distortion numbers, re-derived in full. The gate that
   # runs on every change re-encodes the ends of each quality ladder because a

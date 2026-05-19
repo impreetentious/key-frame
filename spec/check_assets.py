@@ -273,6 +273,13 @@ def main():
     # milliseconds; the two have to be the same rate.
     if scalar_int(constants, "inspector_cif_frame_milliseconds") * 25 != 1000:
         errors.append("constants.toml inspector_cif_frame_milliseconds is not the 25fps CIF interval")
+    # The campaign the build runs before every commit has to be cheaper than the
+    # one that runs overnight, or preflight is the nightly job under another
+    # name and nobody would run it.
+    if scalar_int(constants, "fuzz_iterations_preflight") >= scalar_int(
+        constants, "fuzz_iterations_per_target"
+    ):
+        errors.append("constants.toml fuzz_iterations_preflight is not cheaper than the nightly budget")
 
     # The enumerations that name the same closed sets as other assets. Each was
     # declared and read by nothing, so a set could gain or lose a member in one

@@ -33,10 +33,33 @@ const modulePath = path.join(
   "target/wasm32-unknown-unknown/release/kf_wasm.wasm",
 );
 
-// Appendix-level budget for what a browser downloads, checked on the compressed
-// artifact because that is what crosses the network.
-const WASM_GZIP_BUDGET_BYTES = 1.5 * 1024 * 1024;
-const EXPECTED_ABI_VERSION = 1;
+// The budget for what a browser downloads, checked on the compressed artifact
+// because that is what crosses the network — and read from the frozen constants
+// rather than written here. It was `1.5 * 1024 * 1024`, which is the declared
+// number in a spelling no search for the literal would have found: the site
+// budget gate reads the declaration, this one restated it, and the two would
+// have enforced different limits on the same file the first time it moved.
+//
+// The boundary version is read from the crate that declares it. This is not the
+// host's own statement of what it speaks — `inspector/src/decoder.ts` makes that
+// one independently, which is the whole point of a version handshake — it is a
+// gate asking whether the module still answers what its own source says.
+const WASM_GZIP_BUDGET_BYTES = declaredNumber(
+  "spec/v1/constants.toml",
+  /^inspector_wasm_gzip_bytes\s*=\s*(\d+)\s*$/m,
+  "inspector_wasm_gzip_bytes",
+);
+const EXPECTED_ABI_VERSION = declaredNumber(
+  "crates/kf-wasm/src/abi.rs",
+  /pub const ABI_VERSION:\s*u32\s*=\s*(\d+)\s*;/,
+  "ABI_VERSION",
+);
+
+function declaredNumber(relative, pattern, name) {
+  const match = readFileSync(path.join(root, relative), "utf8").match(pattern);
+  if (!match) throw new Error(`${relative} declares no ${name}`);
+  return Number.parseInt(match[1], 10);
+}
 
 const failures = [];
 

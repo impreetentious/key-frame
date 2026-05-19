@@ -30,6 +30,7 @@ default_golden_interval = 16
 scene_history_capacity = 16
 scene_history_minimum = 4
 fuzz_iterations_per_target = 20000000
+fuzz_iterations_preflight = 2048
 inspector_js_css_gzip_bytes = 307200
 inspector_wasm_gzip_bytes = 1572864
 inspector_cif_frame_milliseconds = 40

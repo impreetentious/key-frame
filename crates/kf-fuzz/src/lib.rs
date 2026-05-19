@@ -11,9 +11,25 @@ use kf_frame::Frame;
 use kf_ref::ReferenceDecoder;
 
 /// Nightly iteration count per target. The budget is a counter, not a clock.
+///
+/// Declared in `spec/v1/constants.toml` and checked against it by the campaign
+/// tests, so the count cannot be reduced here without the specification saying
+/// so. The campaign binary uses this when no count is given, which is why the
+/// nightly job names no number of its own.
 pub const NIGHTLY_ITERATIONS: u32 = 20_000_000;
 
-/// Preflight and unit-test iteration count per target.
+/// Preflight iteration count per target, declared beside the nightly one.
+///
+/// Preflight runs a real campaign rather than the unit tests' smoke run: it is
+/// the check a change is measured against before it is committed, and 256
+/// probes per target is too few to be that. The two counts were separate
+/// numbers in separate files, and only one of them was declared.
+pub const PREFLIGHT_ITERATIONS: u32 = 2_048;
+
+/// Unit-test iteration count per target.
+///
+/// Small on purpose. This one runs inside `cargo test` on every build, where
+/// its job is to prove the campaign harness itself still works, not to search.
 pub const SMOKE_ITERATIONS: u32 = 256;
 
 const ORACLE: &[u8] = include_bytes!("../../../conformance/oracle/intra64_dc_all_zero.kfv");
