@@ -1,7 +1,53 @@
+use std::sync::OnceLock;
+
+use kf_spec::V1_ASSETS;
+
 use crate::{ReferenceError, crc::crc32c, reader::ByteReader};
 
 const FRAME_HEADER_SIZE: usize = 24;
-const MAX_PAYLOAD: u32 = 16 * 1024 * 1024;
+
+/// The payload bounds this scanner admits, read from the frozen constants.
+///
+/// Both were literals here — `16 * 1024 * 1024` and a bare `5` — matching the
+/// literals the production packet layer carries. That made the two decoders
+/// agree about which packets are structurally admissible because two people
+/// typed the same numbers, rather than because both read the specification, and
+/// nothing anywhere compared them: `crates/kf-bitstream/tests/normative_limits.rs`
+/// drives the production constructor with the declared values, and there was no
+/// counterpart on this side. A vector at either boundary would have caught a
+/// drift, and no vector reaches them — the upper one is sixteen megabytes.
+///
+/// Reading the same asset is not sharing an implementation. This parses it with
+/// this crate's own reader, into this crate's own constants, and disagreement
+/// with the specification remains the only way the two decoders can disagree
+/// while both looking correct.
+struct PayloadBounds {
+    minimum: u32,
+    maximum: u32,
+}
+
+fn payload_bounds() -> &'static PayloadBounds {
+    static BOUNDS: OnceLock<PayloadBounds> = OnceLock::new();
+    BOUNDS.get_or_init(|| PayloadBounds {
+        minimum: declared("decoder_initial_bytes"),
+        maximum: declared("max_payload_bytes"),
+    })
+}
+
+fn declared(key: &str) -> u32 {
+    let asset = V1_ASSETS
+        .iter()
+        .find(|asset| asset.name == "constants.toml")
+        .expect("invariant: kf-spec exposes constants.toml");
+    asset
+        .contents
+        .lines()
+        .find_map(|line| {
+            let (name, value) = line.split_once('=')?;
+            (name.trim() == key).then(|| value.trim().parse::<u32>().ok())?
+        })
+        .expect("invariant: checked constants declare the packet payload bounds")
+}
 
 pub(crate) struct RefPacket<'a> {
     pub payload: &'a [u8],
@@ -149,6 +195,7 @@ impl<'a> PacketCursor<'a> {
     }
 }
 
+#[derive(Debug)]
 struct PacketHeader {
     payload_len: u32,
     frame_index: u32,
@@ -166,7 +213,8 @@ fn read_header(bytes: &[u8]) -> Result<PacketHeader, ReferenceError> {
         return Err(ReferenceError::new(0, "packet.sync"));
     }
     let payload_len = u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
-    if !(5..=MAX_PAYLOAD).contains(&payload_len) {
+    let bounds = payload_bounds();
+    if !(bounds.minimum..=bounds.maximum).contains(&payload_len) {
         return Err(ReferenceError::new(4, "packet.payload_len"));
     }
     let flag_bits = bytes[12];
@@ -196,7 +244,8 @@ fn read_packet(bytes: &[u8]) -> Result<RefPacket<'_>, ReferenceError> {
         return Err(ReferenceError::new(0, "packet.sync"));
     }
     let payload_len = reader.u32("packet.payload_len")?;
-    if !(5..=MAX_PAYLOAD).contains(&payload_len) {
+    let bounds = payload_bounds();
+    if !(bounds.minimum..=bounds.maximum).contains(&payload_len) {
         return Err(ReferenceError::new(4, "packet.payload_len"));
     }
     let frame_index = reader.u32("packet.frame_index")?;
@@ -231,4 +280,60 @@ fn read_packet(bytes: &[u8]) -> Result<RefPacket<'_>, ReferenceError> {
         golden_refresh,
         consumed: reader.offset(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{FRAME_HEADER_SIZE, payload_bounds, read_header};
+    use crate::crc::crc32c;
+
+    /// A structurally valid header declaring `payload_len`, sealed so that the
+    /// only thing that can refuse it is the bound under test.
+    fn header(payload_len: u32) -> Vec<u8> {
+        let mut bytes = vec![0_u8; FRAME_HEADER_SIZE];
+        bytes[..4].copy_from_slice(b"KFP1");
+        bytes[4..8].copy_from_slice(&payload_len.to_le_bytes());
+        // Frame zero, key, golden refresh, shown: the one flag combination a
+        // first packet may carry.
+        bytes[12] = 0b0000_0111;
+        bytes[13] = 32;
+        let checksum = crc32c(&bytes[4..16]);
+        bytes[16..20].copy_from_slice(&checksum.to_le_bytes());
+        bytes
+    }
+
+    #[test]
+    fn the_payload_bounds_are_the_ones_the_specification_declares() {
+        // The reference decoder held these as literals matching the production
+        // decoder's literals, so the two agreed with each other rather than
+        // with the document, and nothing compared them. No committed vector
+        // reaches either boundary — the upper one is sixteen megabytes — so the
+        // header is driven directly.
+        let bounds = payload_bounds();
+
+        assert_eq!(
+            read_header(&header(bounds.maximum + 1))
+                .expect_err("a payload past the declared cap was admitted")
+                .element,
+            "packet.payload_len"
+        );
+        assert_eq!(
+            read_header(&header(bounds.minimum - 1))
+                .expect_err("a payload under the decoder's initial read was admitted")
+                .element,
+            "packet.payload_len"
+        );
+
+        // And the positive half, so this cannot pass by refusing everything.
+        // Only the length is under test here; the header carries no payload, so
+        // whatever happens next is a different question.
+        for length in [bounds.minimum, bounds.maximum] {
+            assert_eq!(
+                read_header(&header(length))
+                    .expect("a length inside the declared bounds was refused")
+                    .payload_len,
+                length
+            );
+        }
+    }
 }

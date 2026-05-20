@@ -18,7 +18,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.13.12"
+version = "0.13.13"
 authors = ["Sidakpreet Singh"]
 edition = "2024"
 license = "MIT"
@@ -32,10 +32,12 @@ unsafe_code = "forbid"
 # is denied rather than merely warned: an `f64` on a path that reaches a
 # decoded pixel is a bit-exactness bug, not a style opinion.
 #
-# The tools and the WASM surface legitimately compute quality metrics in
-# floating point and read clocks for reporting. They declare their own lint
-# table and allow `disallowed_types` explicitly, so the codec perimeter stays
-# narrow enough to mean something.
+# `kf-tools` legitimately computes quality metrics in floating point and reads
+# the filesystem, so it declares its own lint table and allows
+# `disallowed_types` explicitly. It is the only crate that does. The WebAssembly
+# surface declares its own table for a different reason — a module cannot export
+# a function without `unsafe` — and keeps `disallowed_types` denied, because a
+# boundary to JavaScript is still a path a decoded pixel travels.
 #
 # `priority = -1` on the group is load-bearing: without it Cargo can pass the
 # group flag after the specific one and silently re-enable what a crate meant

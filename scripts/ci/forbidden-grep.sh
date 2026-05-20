@@ -21,9 +21,21 @@ set -euo pipefail
 root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$root_dir"
 
-# Crates outside the codec perimeter: the tools compute quality metrics in
-# floating point and read the filesystem, and the wasm surface bridges to JS.
-HOST_CRATES=(kf-tools kf-wasm kf-fuzz)
+# Crates outside the codec perimeter.
+#
+# `kf-tools` computes quality metrics in floating point and reads the
+# filesystem; `kf-fuzz` drives campaigns from files and reports on them. Both
+# declare `disallowed_types = "allow"` and mean it.
+#
+# `kf-wasm` used to be here too, on the reasoning that a boundary to JavaScript
+# needs latitude. It does not. The crate holds no float, no unordered
+# container, no clock, and nothing ambient — it denies `disallowed_types` like
+# every codec crate — so the exemption bought it nothing and cost it the scans
+# clippy cannot express, on the one artifact a visitor's browser actually runs.
+# The three addresses it hands across the boundary are exposed and recovered
+# explicitly rather than cast, which is both what the provenance rules ask for
+# and what leaves this scan with nothing to forgive.
+HOST_CRATES=(kf-tools kf-fuzz)
 
 codec_paths=()
 for crate_dir in crates/*/; do
@@ -79,7 +91,7 @@ scan "floating point in a codec crate" \
 # this is not a ban that would be suppressed everywhere within a week. It asks
 # for a rule instead: a numeric `as` cast is allowed where the comment block
 # directly above it begins `cast:` and says why the discarded bits are not
-# wanted. Four casts in the codec perimeter meet that bar today, and the one
+# wanted. Five casts in the codec perimeter meet that bar today, and the one
 # that truncates on purpose — the range encoder's delayed carry — is the reason
 # the rule is a rule rather than a prohibition.
 unnamed_casts=""

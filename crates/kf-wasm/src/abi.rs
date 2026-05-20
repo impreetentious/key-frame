@@ -23,6 +23,13 @@
 //! the same source honest instead of silently truncating a 64-bit address into
 //! a 32-bit one.
 //!
+//! An offset that crosses this boundary is a pointer the host will hand back,
+//! so every address here is exposed and recovered explicitly — `expose_provenance`
+//! going out, `with_exposed_provenance_mut` coming in. Written as `as` casts, the
+//! same round trip compiles and runs identically while telling the compiler the
+//! provenance ended at the boundary, which is the one thing that is not true
+//! about it.
+//!
 //! Every `unsafe` block below states the invariant the host must uphold for it.
 //! They are the only ones in the repository.
 
@@ -68,7 +75,11 @@ pub extern "C" fn kf_alloc(len: usize) -> usize {
     // no-op that makes the requirement explicit rather than assumed.
     debug_assert_eq!(buffer.capacity(), len);
     let boxed = buffer.into_boxed_slice();
-    Box::into_raw(boxed).cast::<u8>() as usize
+    // The address is handed to the host, which hands it back to `kf_free`. That
+    // round trip is what `expose_provenance` states: an `as usize` here and a
+    // `as *mut u8` there would make the same journey while telling the compiler
+    // the pointer's provenance ends at this line, which is not what happens.
+    Box::into_raw(boxed).cast::<u8>().expose_provenance()
 }
 
 /// Releases a buffer previously returned by [`kf_alloc`].
@@ -83,7 +94,7 @@ pub extern "C" fn kf_free(offset: usize, len: usize) {
     // the same length and capacity is the inverse of the `mem::forget` there.
     unsafe {
         drop(Box::from_raw(core::ptr::slice_from_raw_parts_mut(
-            offset as *mut u8,
+            core::ptr::with_exposed_provenance_mut::<u8>(offset),
             len,
         )));
     }
@@ -178,7 +189,7 @@ pub extern "C" fn kf_last_entry_cost() -> u32 {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn kf_output_ptr() -> usize {
-    SESSION.with_borrow(|session| session.output().as_ptr() as usize)
+    SESSION.with_borrow(|session| session.output().as_ptr().expose_provenance())
 }
 
 #[unsafe(no_mangle)]
@@ -188,7 +199,7 @@ pub extern "C" fn kf_output_len() -> usize {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn kf_message_ptr() -> usize {
-    SESSION.with_borrow(|session| session.message().as_ptr() as usize)
+    SESSION.with_borrow(|session| session.message().as_ptr().expose_provenance())
 }
 
 #[unsafe(no_mangle)]

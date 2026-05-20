@@ -35,9 +35,11 @@ specification. Every gate in the repository exists to prove the two agree.
 - Frames the stream in sync-marked packets carrying independent header and
   payload CRC32C, resynchronizes byte-by-byte after damage, and installs a
   decoded frame into the reference state only on complete success.
-- Ships `kfenc`, `kfdec`, and `kfprobe`: encode, decode, and turn any stream
-  into schema-validated per-block JSON with byte accounting that reconciles
-  against a canonical replay of the payload.
+- Ships `kfenc`, `kfdec`, and `kfprobe`: encode; decode a whole stream, one
+  frame by random access, or a damaged one walked to its end and held on its
+  last shown image the way the corruption rules define; and turn any stream into
+  schema-validated per-block JSON with byte accounting that reconciles against a
+  canonical replay of the payload.
 - Measures quality with `kfmetric`, whose PSNR, SSIM, and BD-rate definitions
   are pinned to the last constant and checked against a second implementation
   written independently of the first. Every report names its inputs by content
@@ -51,6 +53,11 @@ specification. Every gate in the repository exists to prove the two agree.
 - Keeps the entire signal path integer-only: no floating point, no unordered
   iteration, no ambient clocks, no filesystem, no threads, and no numeric cast
   that discards bits without a rule written beside it saying which bits and why.
+- Depends on no Rust crate but its own. The range coder, the CRC32C, the
+  transforms, the JSON reader, the Y4M parser, the SHA-256, the quality metrics,
+  and the WebAssembly boundary are all written here and read here, and a gate
+  fails the build if the lockfile ever resolves a package this workspace does
+  not contain.
 - Checks integer overflow in release builds too, so the twenty-million-stream
   campaign, the natural-corpus proof, and the browser module stop on a wrapping
   addition instead of quietly decoding a wrong sample from one.
@@ -170,6 +177,9 @@ cargo run --release -p kf-tools --bin kfenc -- \
 # or: --bitrate 400000 in place of --qp
 cargo run --release -p kf-tools --bin kfdec -- \
   output.kfv --output decoded.y4m
+# or: --frame N for one frame by random access, --seek N to start there,
+#     --verify to recompute every checksum without decoding a picture, and
+#     --tolerate to walk a damaged stream to its end
 cargo run --release -p kf-tools --bin kfprobe -- output.kfv
 # or: --frame N to report a later frame
 cargo run --release -p kf-tools --bin kfmetric -- psnr input.y4m decoded.y4m
@@ -227,4 +237,4 @@ preflight green.
 
 ---
 
-**Version:** v0.13.12
+**Version:** v0.13.13

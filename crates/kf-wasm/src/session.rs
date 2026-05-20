@@ -27,6 +27,11 @@ pub enum Status {
 impl Status {
     #[must_use]
     pub const fn code(self) -> u32 {
+        // cast: the discriminant of a fieldless enum whose six values are zero
+        // through five and are pinned one by one by
+        // `status_codes_are_distinct_and_stable`. Nothing is discarded; the
+        // codes are the boundary contract, so they are asserted rather than
+        // left to declaration order.
         self as u32
     }
 }
@@ -249,15 +254,29 @@ fn raw_planes(frame: &Frame) -> Vec<u8> {
 }
 
 fn packed_len(plane: &kf_frame::Plane) -> usize {
-    plane.width() as usize * plane.height() as usize
+    let width = as_index(plane.width());
+    let height = as_index(plane.height());
+    width * height
+}
+
+/// A plane extent as a buffer index.
+///
+/// Fallible rather than an `as` cast, because the cast is the one conversion
+/// the compiler will not argue with: on a target where `usize` is narrower than
+/// a plane dimension it would discard the high bits and produce a shorter
+/// buffer than the picture, which the host would read as a valid frame of the
+/// wrong size. Every supported target is wide enough, and that is a fact worth
+/// stating where it is relied on.
+fn as_index(extent: u32) -> usize {
+    usize::try_from(extent).expect("invariant: a plane extent fits an index on this target")
 }
 
 /// Appends one plane's display samples, row by row, skipping any stride
 /// padding the backing buffer carries.
 fn pack_plane(plane: &kf_frame::Plane, into: &mut Vec<u8>) {
-    let width = plane.width() as usize;
-    let height = plane.height() as usize;
-    let stride = plane.stride() as usize;
+    let width = as_index(plane.width());
+    let height = as_index(plane.height());
+    let stride = as_index(plane.stride());
     let data = plane.data();
     for row in 0..height {
         let start = row * stride;
