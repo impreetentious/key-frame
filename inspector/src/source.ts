@@ -53,12 +53,30 @@ export function parseY4m(bytes: Uint8Array): SourceClip {
       throw new SourceError("only progressive clips are supported");
     }
   }
-  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) {
-    throw new SourceError("the header does not give usable dimensions");
+  // The same bounds the codec's own reader enforces, and for the same reason.
+  // This clip is only ever compared against a stream *this* codec produced, so
+  // a clip outside what the codec can encode cannot be the source of one — and
+  // accepting it would mean drawing an error map against a picture the stream
+  // did not come from.
+  if (
+    !Number.isInteger(width) ||
+    !Number.isInteger(height) ||
+    width < 64 ||
+    height < 64 ||
+    width > 4096 ||
+    height > 2304 ||
+    width % 2 !== 0 ||
+    height % 2 !== 0
+  ) {
+    throw new SourceError("the header does not give dimensions this format allows");
   }
-  // The codec's own reader treats an absent C tag as C420jpeg, so this does too.
-  if (!["420jpeg", "420", "420mpeg2", "420paldv"].includes(chroma)) {
-    throw new SourceError(`chroma ${chroma} is not 8-bit 4:2:0`);
+  // One siting, not four. An absent C tag means C420jpeg and the codec's reader
+  // says so; the other three names are 4:2:0 with the chroma samples in
+  // different places, and this reader used to take them while `kfenc` refused
+  // them. Two readers of one format that disagree about what the format is are
+  // worse than either of them alone.
+  if (chroma !== "420jpeg") {
+    throw new SourceError(`chroma ${chroma} is not JPEG-sited 8-bit 4:2:0`);
   }
 
   const lumaSize = width * height;

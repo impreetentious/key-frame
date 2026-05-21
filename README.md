@@ -181,7 +181,8 @@ cargo run --release -p kf-tools --bin kfdec -- \
 #     --verify to recompute every checksum without decoding a picture, and
 #     --tolerate to walk a damaged stream to its end
 cargo run --release -p kf-tools --bin kfprobe -- output.kfv
-# or: --frame N to report a later frame
+# or: --frame N to report a later frame, --summary to read it as a
+#     partition tree instead of JSON
 cargo run --release -p kf-tools --bin kfmetric -- psnr input.y4m decoded.y4m
 ```
 
@@ -237,4 +238,4 @@ preflight green.
 
 ---
 
-**Version:** v0.13.13
+**Version:** v0.13.14

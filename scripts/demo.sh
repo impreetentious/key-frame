@@ -80,67 +80,11 @@ print("  Regenerate either with: kfmetric repro <report.json>")
 PY
 
 rule "4. Inspect one frame's syntax"
-"$bin/kfprobe" "$work_dir/out.kfv" --frame $(( frames > 8 ? 8 : 0 )) \
-  > "$work_dir/probe.json"
-python3 - "$work_dir/probe.json" <<'PROBE'
-import json
-from pathlib import Path
-import sys
-
-report = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-frame = report["frame"]
-superblocks = frame["superblocks"]
-blocks = [block for superblock in superblocks for block in superblock["cbs"]]
-
-print("  frame %d, %s, qp %d, %d superblock(s), %d coding block(s)" % (
-    frame["frame_index"],
-    "key" if frame["flags"]["key"] else "inter",
-    frame["qp"],
-    len(superblocks),
-    len(blocks),
-))
-
-# One superblock's partition, drawn as the quadtree it is. The bar length is the
-# block's side, so a split superblock reads as a staircase rather than a table.
-first = superblocks[0]
-print("\n  superblock at (%d, %d) partitions to:" % tuple(first["pos"]))
-for block in first["cbs"]:
-    prediction = block["prediction"]
-    kind = prediction["kind"]
-    if kind == "intra":
-        detail = prediction.get("mode", "?")
-    elif kind == "skip":
-        detail = prediction.get("reference", "?")
-    else:
-        detail = "%s mv %s" % (
-            prediction.get("reference", "?"),
-            prediction.get("mv_q4", "?"),
-        )
-    print("    %-8s %2dx%-2d at (%3d,%3d)  %s %s" % (
-        "#" * max(1, block["size"] // 8),
-        block["size"], block["size"], block["pos"][0], block["pos"][1],
-        kind, detail,
-    ))
-
-# The two accounting figures, kept apart. Adding them would produce a number
-# that looks like "the bits this block cost" and is not one.
-print("\n  accounting, the two quantities never added:")
-print("    modeled entropy   what the encoder's model predicted")
-print("    emission-time     when the range coder happened to flush a byte")
-for block in first["cbs"][:4]:
-    print("      %2dx%-2d at (%3d,%3d)  modeled %8.2f bits   emitted %3d bytes" % (
-        block["size"], block["size"], block["pos"][0], block["pos"][1],
-        block["modeled_entropy_q16"] / 65536.0,
-        block["emitted_payload_bytes"],
-    ))
-print("    Neither is 'this block's bit count'. That question has no answer.")
-
-print("\n  input payload %d bytes, canonical replay %d bytes, match: %s" % (
-    frame["input_payload_len"],
-    frame["canonical_replay_payload_len"],
-    frame["canonical_payload_match"],
-))
-PROBE
+# The rendering lives in the tool, not here. It used to be twenty lines of
+# Python in this script, reaching into the probe's JSON with unchecked lookups —
+# a second reader of the report, validated by nothing, that would have started
+# raising KeyError the first time the schema moved.
+"$bin/kfprobe" "$work_dir/out.kfv" --frame $(( frames > 8 ? 8 : 0 )) --summary
 
 rule "5. The proof"
 coded_hash="$(openssl dgst -sha256 "$work_dir/out.kfv" | awk '{print $NF}')"

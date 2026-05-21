@@ -84,3 +84,100 @@ fn valid_noncanonical_tail_reports_mismatch_without_attribution() {
     assert_eq!(attributed, 6);
     assert_ne!(attributed, 7);
 }
+
+/// `kfprobe --summary`, the rendering the terminal demo used to do in Python.
+///
+/// The Python read the report's JSON with unchecked dictionary lookups, so a
+/// schema change would have surfaced as a traceback in the demo rather than as
+/// a failing test. This drives the tool and asserts what a reader is owed: the
+/// partition, both accounting figures, and the sentence that keeps them from
+/// being added.
+mod summary {
+    use std::process::Command;
+
+    const STREAM: &str = "../../conformance/encoder/inter_motion64_qp32.kfv";
+
+    fn kfprobe(arguments: &[&str]) -> (i32, String, String) {
+        let output = Command::new(env!("CARGO_BIN_EXE_kfprobe"))
+            .current_dir(env!("CARGO_MANIFEST_DIR"))
+            .args(arguments)
+            .output()
+            .expect("kfprobe runs");
+        (
+            output.status.code().unwrap_or(-1),
+            String::from_utf8_lossy(&output.stdout).into_owned(),
+            String::from_utf8_lossy(&output.stderr).into_owned(),
+        )
+    }
+
+    #[test]
+    fn the_summary_renders_the_partition_and_both_accounting_figures() {
+        let (status, stdout, stderr) = kfprobe(&[STREAM, "--summary"]);
+        assert_eq!(status, 0, "{stderr}");
+
+        assert!(stdout.starts_with("frame 0, key, qp 32,"), "{stdout}");
+        assert!(
+            stdout.contains("superblock at (0, 0) partitions to:"),
+            "{stdout}"
+        );
+        // Four leaves, each named with its size, position, and prediction.
+        assert_eq!(stdout.matches("32x32 at (").count(), 8, "{stdout}");
+        assert!(stdout.contains("intra dc"), "{stdout}");
+
+        // The disclaimer is the point of the rendering, not decoration: a
+        // summary that showed both numbers without it would invite the sum.
+        assert!(
+            stdout.contains("the two quantities never added"),
+            "{stdout}"
+        );
+        assert!(
+            stdout.contains("Neither is 'this block's bit count'."),
+            "{stdout}"
+        );
+        assert!(stdout.contains("modeled "), "{stdout}");
+        assert!(stdout.contains("emitted "), "{stdout}");
+        assert!(stdout.contains("canonical replay"), "{stdout}");
+    }
+
+    #[test]
+    fn the_modeled_figure_is_the_reports_own_fixed_point_value() {
+        // Rendered from Q16.16 without going through a float, so the printed
+        // figure is exactly the report's value to two decimals rather than the
+        // nearest double to it.
+        let report = kf_tools::probe_frame(
+            &std::fs::read(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(STREAM))
+                .expect("the committed stream is readable"),
+            0,
+        )
+        .expect("it probes");
+        let first = &report.superblocks[0].blocks[0];
+        let expected = format!(
+            "{}.{:02}",
+            first.modeled_entropy_q16 >> 16,
+            ((first.modeled_entropy_q16 & 0xFFFF) * 100 + (1 << 15)) >> 16
+        );
+
+        let (_, stdout, _) = kfprobe(&[STREAM, "--summary"]);
+        assert!(
+            stdout.contains(&format!("modeled {expected:>8} bits")),
+            "expected {expected} in:\n{stdout}"
+        );
+    }
+
+    #[test]
+    fn a_superblock_that_is_not_there_is_named_rather_than_defaulted() {
+        let (status, _, stderr) = kfprobe(&[STREAM, "--summary", "--superblock", "9"]);
+        assert_eq!(status, 1);
+        assert!(stderr.contains("no superblock 9"), "{stderr}");
+    }
+
+    #[test]
+    fn the_default_output_is_still_the_wire_format() {
+        // The projection room and the equality gate both read this. A tool that
+        // started printing prose by default would break them at once, which is
+        // the good case; asserting it keeps the bad case from being invented.
+        let (status, stdout, _) = kfprobe(&[STREAM]);
+        assert_eq!(status, 0);
+        assert!(stdout.starts_with("{\"probe_version\":1,"), "{stdout}");
+    }
+}

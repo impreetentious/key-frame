@@ -47,15 +47,23 @@ pub fn decode_y4m(bytes: &[u8]) -> Result<Y4mStream, Y4mError> {
     let mut fps = None;
     let mut chroma = None;
     for token in tokens {
-        let (kind, value) = token.split_at(1);
+        // By character, not by byte. `split_at(1)` panics when the first
+        // character is not one byte wide, and a Y4M header is only required to
+        // be UTF-8 here — so a header carrying any non-ASCII token aborted the
+        // process instead of producing the named error this module exists to
+        // produce. Nothing reaches this parser but files a caller chose, and
+        // that is exactly the argument for refusing rather than panicking.
+        let mut characters = token.chars();
+        let kind = characters.next().ok_or_else(|| error(0, "header.token"))?;
+        let value = characters.as_str();
         match kind {
-            "W" => width = Some(parse_u16(value, 0, "header.width")?),
-            "H" => height = Some(parse_u16(value, 0, "header.height")?),
-            "F" => fps = Some(parse_ratio(value, "header.fps")?),
-            "I" if value == "p" => {}
-            "I" => return Err(error(0, "header.interlace")),
-            "C" => chroma = Some(value),
-            "A" | "X" => {}
+            'W' => width = Some(parse_u16(value, 0, "header.width")?),
+            'H' => height = Some(parse_u16(value, 0, "header.height")?),
+            'F' => fps = Some(parse_ratio(value, "header.fps")?),
+            'I' if value == "p" => {}
+            'I' => return Err(error(0, "header.interlace")),
+            'C' => chroma = Some(value),
+            'A' | 'X' => {}
             _ => return Err(error(0, "header.token")),
         }
     }
@@ -131,6 +139,19 @@ pub fn encode_y4m(stream: &Y4mStream) -> Result<Vec<u8>, Y4mError> {
     }) {
         return Err(error(0, "frame.dimensions"));
     }
+    // The chroma planes are checked too. `Frame::filled_420` sizes them, but
+    // the planes are public fields, and a frame carrying a wrong-sized chroma
+    // plane would otherwise be written as a file whose frames are the wrong
+    // length — corrupt, and only detectably so on the next read.
+    if stream.frames.iter().any(|frame| {
+        let (half_width, half_height) = (frame.width() / 2, frame.height() / 2);
+        frame.cb.width() != half_width
+            || frame.cb.height() != half_height
+            || frame.cr.width() != half_width
+            || frame.cr.height() != half_height
+    }) {
+        return Err(error(0, "frame.chroma_dimensions"));
+    }
     let mut bytes = format!(
         "YUV4MPEG2 W{} H{} F{}:{} Ip A0:0 C420jpeg\n",
         stream.width, stream.height, stream.fps_num, stream.fps_den
@@ -138,11 +159,34 @@ pub fn encode_y4m(stream: &Y4mStream) -> Result<Vec<u8>, Y4mError> {
     .into_bytes();
     for frame in &stream.frames {
         bytes.extend_from_slice(b"FRAME\n");
-        bytes.extend_from_slice(frame.y.data());
-        bytes.extend_from_slice(frame.cb.data());
-        bytes.extend_from_slice(frame.cr.data());
+        append_displayed(&frame.y, &mut bytes);
+        append_displayed(&frame.cb, &mut bytes);
+        append_displayed(&frame.cr, &mut bytes);
     }
     Ok(bytes)
+}
+
+/// Appends one plane's displayed samples, row by row, skipping stride padding.
+///
+/// A plane may be wider in memory than it is in picture — `Plane::with_stride`
+/// allows it and the decoder's internal buffers use it — and this wrote the
+/// backing buffer whole. Every path that reaches it today happens to hand it
+/// tightly packed planes, so the file was right by luck rather than by rule:
+/// the first padded frame written here would have produced a Y4M whose frames
+/// are `stride x height` bytes long, which the reader on the other side would
+/// have taken apart into rows that do not line up.
+///
+/// It is the same defect the quality metrics carried until they were made to
+/// read displayed samples, and the same one the WebAssembly boundary packs
+/// against. This is the third place it could hide and the last that was open.
+fn append_displayed(plane: &kf_frame::Plane, into: &mut Vec<u8>) {
+    let width = plane.width() as usize;
+    let stride = plane.stride() as usize;
+    let data = plane.data();
+    for row in 0..plane.height() as usize {
+        let start = row * stride;
+        into.extend_from_slice(&data[start..start + width]);
+    }
 }
 
 fn parse_u16(value: &str, offset: usize, element: &'static str) -> Result<u16, Y4mError> {

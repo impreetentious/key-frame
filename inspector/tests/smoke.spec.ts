@@ -311,10 +311,19 @@ test("a source clip that does not match the stream is refused", async ({ page })
   await page.goto("/");
   await expect(page.getByText("64×64")).toBeVisible();
 
-  // Wrong dimensions. Accepting it would produce an error map computed against
-  // the wrong pictures, which looks plausible and means nothing.
+  // Wrong dimensions, but a clip the reader will parse. Accepting it would
+  // produce an error map computed against the wrong pictures, which looks
+  // plausible and means nothing.
+  await attachSource(page, 128, 128, 1, () => 64);
+  await expect(page.getByText(/the source is 128x128 and the stream is 64x64/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Why is this block ugly?" })).toBeDisabled();
+
+  // And a clip outside the format entirely is refused a step earlier, by the
+  // reader, with the reader's own message. The two refusals answer different
+  // questions — "is this a clip this codec could have encoded" and "is this the
+  // clip that produced this stream" — and both are needed.
   await attachSource(page, 32, 32, 1, () => 64);
-  await expect(page.getByText(/the source is 32x32 and the stream is 64x64/)).toBeVisible();
+  await expect(page.getByText(/dimensions this format allows/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Why is this block ugly?" })).toBeDisabled();
 });
 
