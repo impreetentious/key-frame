@@ -234,8 +234,8 @@ and requires them to be byte-identical.
 Key Frame is pre-1.0 and single-maintainer. The bitstream version is a separate
 contract from the repository version: a syntax change requires an architectural
 decision record, a bitstream-version bump, regenerated independent vectors, and
-review of both decoder implementations. Records in [`docs/adr/`](docs/adr/) are
-append-only. Every change adds tests for the failure modes it touches and leaves
+review of both decoder implementations. Records in
+[`docs/adr/`](docs/adr/README.md) are append-only and indexed there. Every change adds tests for the failure modes it touches and leaves
 preflight green.
 
 ## License
@@ -244,4 +244,4 @@ preflight green.
 
 ---
 
-**Version:** v0.13.15
+**Version:** v0.13.16

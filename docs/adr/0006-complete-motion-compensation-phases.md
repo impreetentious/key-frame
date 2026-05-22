@@ -1,4 +1,4 @@
-# ADR 0006: Complete the version-one motion-compensation phases
+# ADR-0006: Complete the version-one motion-compensation phases
 
 - Status: accepted
 - Date: 2025-06-28

@@ -1,4 +1,4 @@
-# ADR 0005: Freeze the probe version-one wire format
+# ADR-0005: Freeze the probe version-one wire format
 
 - Status: accepted
 - Date: 2025-06-26

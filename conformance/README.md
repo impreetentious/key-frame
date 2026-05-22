@@ -6,6 +6,12 @@ The suite has three labeled origins. None may silently replace another.
 - `hand/` — streams constructed at the syntax layer and reviewed as literals
 - `encoder/` — streams produced by the canonical encoder at pinned settings
 
+`crashes/` is not an origin and is not generated. It holds the streams that
+found real defects, kept so each fix stays fixed; every one is named by an entry
+in [`docs/cutting-room/`](../docs/cutting-room/), and
+`scripts/collect-cutting-room.mjs` refuses to build the site if a stream there
+has no entry or an entry names a stream that is not there.
+
 Decoded hashes include the integer deblocking filter: the filtered image is
 what both decoders emit and what the encoder stores as LAST and GOLDEN.
 Bitstream version is 1. Regenerate with:

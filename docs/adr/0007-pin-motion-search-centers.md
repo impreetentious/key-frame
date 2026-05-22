@@ -1,4 +1,4 @@
-# ADR 0007: Pin canonical motion-search centers
+# ADR-0007: Pin canonical motion-search centers
 
 - Status: accepted
 - Date: 2025-06-28

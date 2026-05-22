@@ -35,7 +35,28 @@ adrFiles.forEach((name, expected) => {
   if (actual !== expected) {
     errors.push(`ADR sequence expected ${String(expected).padStart(4, "0")}, found ${name}`);
   }
+  // And the title, which this used never to look at. Three records opened with
+  // `ADR NNNN` where the template and every cross-reference in the repository
+  // write `ADR-NNNN`, so a search for the canonical form missed them.
+  if (name === "0000-template.md") return;
+  const title = readFileSync(path.join(root, "docs/adr", name), "utf8").split("\n")[0] ?? "";
+  const expectedTitle = new RegExp(`^# ADR-${name.slice(0, 4)}: \\S`);
+  if (!expectedTitle.test(title)) {
+    errors.push(`${name} should open with "# ADR-${name.slice(0, 4)}: …", found ${JSON.stringify(title)}`);
+  }
 });
+
+// The index has to name every record, or it is a map with roads missing.
+const indexPath = path.join(root, "docs/adr/README.md");
+if (!existsSync(indexPath)) {
+  errors.push("docs/adr/README.md is missing, so the decision records have no index");
+} else {
+  const index = readFileSync(indexPath, "utf8");
+  for (const name of adrFiles) {
+    if (name === "0000-template.md") continue;
+    if (!index.includes(name)) errors.push(`docs/adr/README.md does not name ${name}`);
+  }
+}
 
 function markdownFiles(directory) {
   const files = [];

@@ -8,9 +8,18 @@
 // JSON file plus a copy of each pinned regression stream, so the page can list
 // findings and open the exact stream that produced one.
 //
-// It refuses rather than skips. An entry missing its regression path would
-// otherwise appear in the site as a finding nobody can reproduce, which is the
-// one thing a bug catalogue must never contain.
+// It refuses rather than skips, in both directions. An entry missing its
+// regression path would appear in the site as a finding nobody can reproduce,
+// which is the one thing a bug catalogue must never contain — and a stream in
+// `conformance/crashes/` that no entry names is the same failure seen from the
+// other end: a file kept because a fuzzer once found it, decoded by nothing,
+// explained by nothing, and impossible to delete with confidence because
+// nobody can say what it was for.
+//
+// The conformance generator makes the same check for the three origins it
+// authors, and says in as many words that the crashes directory is outside it
+// because the cutting room names each stream. That sentence was true and
+// nothing kept it true.
 
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -83,6 +92,23 @@ function main() {
       body: body.replace(/^#\s+.+$\n?/m, "").trim(),
     };
   });
+
+  // Every pinned stream, against every stream that is pinned.
+  const pinned = new Set(entries.map((entry) => path.resolve(root, entry.regression)));
+  const crashes = path.join(root, "conformance/crashes");
+  if (existsSync(crashes)) {
+    const orphans = readdirSync(crashes)
+      .filter((name) => name.endsWith(".kfv"))
+      .map((name) => path.join(crashes, name))
+      .filter((file) => !pinned.has(file));
+    if (orphans.length > 0) {
+      throw new Error(
+        `conformance/crashes holds ${orphans.length} stream(s) no entry names: ` +
+          `${orphans.map((file) => path.relative(root, file)).join(", ")}. ` +
+          "Write the entry that explains it, or delete it.",
+      );
+    }
+  }
 
   writeFileSync(
     path.join(publicDir, "cutting-room.json"),
