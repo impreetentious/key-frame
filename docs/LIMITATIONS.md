@@ -136,14 +136,21 @@ matrix asserts each of them in both decoders.
   receipt records the count. If you encode a clip shorter than about a second
   and a half at a bitrate target, expect it to undershoot.
 
-  Even converged, it is not uniformly within 5%. Across twelve operating points
-  on the corpus the mean absolute error is 2.2% and the worst is 5.3%, with two
-  points above 5% — both aggressive targets on the high-motion clip. The cause
-  is structural rather than a tuning failure: the quantizer moves in steps of
-  two with no finer control, so at some targets no achievable sequence of
-  quantizers lands inside 5%. Closing that would take per-superblock quantizer
-  adjustment, which is a syntax addition and therefore a bitstream-version bump.
-  See [ADR-0016](adr/0016-complexity-term-in-rate-control.md).
+  Even converged, it is not uniformly within 5%. The campaign measures six
+  average-bitrate operating points — three targets on each of the two pinned
+  clips, forty-eight frames each — and across them the mean absolute error is
+  2.32% and the worst is 5.32%, with one point above 5% on the high-motion clip.
+  Those three figures are the receipt's own: `rd_verify` re-encodes each target
+  and compares every recorded number, and `crates/kf-tools/tests/receipt_shape.rs`
+  recomputes this aggregate and fails if the sentence you are reading stops
+  describing it. The cause is structural rather than a tuning failure: the
+  quantizer moves in steps of two with no finer control, so at some targets no
+  achievable sequence of quantizers lands inside 5%. Closing that would take
+  per-superblock quantizer adjustment, which is a syntax addition and therefore a
+  bitstream-version bump. The wider twelve-point sweep that chose the complexity
+  term is in [ADR-0016](adr/0016-complexity-term-in-rate-control.md) as the
+  record of that decision; it compared three encoder variants, two of which no
+  longer exist, so it is history rather than a figure this build can recheck.
 
 ## Accounting semantics
 

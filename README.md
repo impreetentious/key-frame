@@ -40,6 +40,11 @@ specification. Every gate in the repository exists to prove the two agree.
   last shown image the way the corruption rules define; and turn any stream into
   schema-validated per-block JSON with byte accounting that reconciles against a
   canonical replay of the payload.
+- Leaves a receipt for any encode that asks for one: the source and the coded
+  stream by content hash, the settings, and each frame's payload and luma PSNR —
+  measured against a fresh decode of the stream, never against the encoder's own
+  reconstruction, because those are required to be identical and measuring the
+  copy would hide the one bug that matters most.
 - Measures quality with `kfmetric`, whose PSNR, SSIM, and BD-rate definitions
   are pinned to the last constant and checked against a second implementation
   written independently of the first. Every report names its inputs by content
@@ -174,7 +179,8 @@ Or run the tools directly on an 8-bit 4:2:0 input:
 ```sh
 cargo run --release -p kf-tools --bin kfenc -- \
   --input input.y4m --qp 32 --output output.kfv
-# or: --bitrate 400000 in place of --qp
+# or: --bitrate 400000 in place of --qp, and --stats stats.json to decode the
+#     result and write a receipt carrying every per-frame figure
 cargo run --release -p kf-tools --bin kfdec -- \
   output.kfv --output decoded.y4m
 # or: --frame N for one frame by random access, --seek N to start there,
@@ -238,4 +244,4 @@ preflight green.
 
 ---
 
-**Version:** v0.13.14
+**Version:** v0.13.15

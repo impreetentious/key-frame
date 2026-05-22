@@ -6,6 +6,12 @@
 //! runs the same encodes again and compares every recorded field — coded size,
 //! stream hash, both metrics — and exits non-zero on the first that has moved.
 //!
+//! The average-bitrate half of the receipt is re-encoded the same way. It was
+//! not: the receipt has always carried a coded size, an achieved bitrate, an
+//! accuracy figure, both metrics, and a stream hash for every average-bitrate
+//! target, and nothing recomputed any of them, while `docs/LIMITATIONS.md`
+//! published the envelope those figures describe.
+//!
 //! It also recomputes the BD-rate of each ablation against the full toolset and
 //! compares it against the figure the receipt records. That figure is the one
 //! the charts page draws — the page states what the campaign measured rather
@@ -14,7 +20,7 @@
 
 use std::{env, fs, process::ExitCode};
 
-use kf_bitstream::SequenceHeader;
+use kf_bitstream::{SEQUENCE_HEADER_SIZE, SequenceHeader};
 use kf_dec::FastDecoder;
 use kf_enc::{Encoder, Toolset};
 use kf_frame::Frame;
@@ -26,13 +32,14 @@ usage: rd_verify --receipts <campaign.json> [options]
 
   --clip-dir DIR    where the source clips live, default corpus/clips
   --toolset NAME    verify only this toolset; repeatable, defaults to all
-  --quick           verify the lowest and highest quality point of each curve
+  --quick           verify the ends of each quality ladder and the most
+                    aggressive average-bitrate target on each clip
   --baseline FILE   also check the shipping curves against a previous release
   --allow PERCENT   how much worse the baseline check tolerates, default 2
 
-Every figure in the receipt is recomputed and compared. --quick checks the ends
-of each ladder rather than all five points; it is a faster smoke test and not a
-substitute for the full run.";
+Every figure in the receipt is recomputed and compared. --quick samples rather
+than checking every point; it is a faster smoke test and not a substitute for
+the full run.";
 
 /// How much a release may regress before the check refuses it.
 ///
@@ -212,6 +219,8 @@ fn run(arguments: Vec<String>) -> Result<String, String> {
     }
 
     let summary = bd_rates(curves)?;
+    let (abr_checked, abr_summary) =
+        verify_rate_control(&document, &clip_dir, quick, keyframe, golden)?;
     let regression = match baseline_path {
         None => String::new(),
         Some(path) => {
@@ -222,9 +231,175 @@ fn run(arguments: Vec<String>) -> Result<String, String> {
     };
 
     Ok(format!(
-        "rd-verify: OK — {checked} point(s) reproduce exactly{}{summary}{regression}",
-        if quick { " (ladder ends only)" } else { "" }
+        "rd-verify: OK — {checked} rate-quality point(s) and {abr_checked} average-bitrate \
+         point(s) reproduce exactly{}{summary}{abr_summary}{regression}",
+        if quick { " (sampled)" } else { "" }
     ))
+}
+
+/// The average-bitrate half of the receipt, re-encoded and compared.
+///
+/// The curves were rechecked on every run and these were not: the receipt has
+/// always carried a coded size, an achieved bitrate, an accuracy figure, both
+/// metrics, and a stream hash for each average-bitrate target, and nothing
+/// recomputed any of them. `docs/LIMITATIONS.md` publishes the envelope those
+/// figures describe, so an encoder change that moved them would have left the
+/// document describing a controller that no longer exists — which is the exact
+/// failure the rate-distortion half of this file was written to prevent.
+///
+/// `--quick` verifies the lowest and highest target on each clip rather than
+/// every one, for the same reason it verifies the ends of each quality ladder:
+/// a gate slow enough to be skipped protects nothing, and the nightly job runs
+/// the whole receipt.
+fn verify_rate_control(
+    document: &Json,
+    clip_dir: &str,
+    quick: bool,
+    keyframe: u16,
+    golden: u8,
+) -> Result<(usize, String), String> {
+    let Some(control) = document.get("rate_control") else {
+        return Ok((0, String::new()));
+    };
+    let clips = control
+        .get("clips")
+        .and_then(Json::as_array)
+        .ok_or_else(|| "the receipt's rate-control section has no clips".to_owned())?;
+
+    let mut checked = 0_usize;
+    let mut differences = Vec::new();
+    let mut lines = String::from("\n  average-bitrate accuracy:");
+
+    for entry in clips {
+        let clip_name = text_field(entry, "clip")?;
+        let frames = integer(entry, "frames")? as usize;
+        let path = format!("{clip_dir}/{clip_name}.y4m");
+        let bytes = fs::read(&path).map_err(|error| format!("{path}: {error}"))?;
+        let stream = decode_y4m(&bytes).map_err(|error| format!("{path}: {error}"))?;
+        let clip = stream
+            .frames
+            .get(..frames)
+            .ok_or_else(|| format!("{path} has fewer than {frames} frames"))?
+            .to_vec();
+
+        // The same identity the campaign recorded: the path, the frame count
+        // actually measured, and the file. The window here is longer than the
+        // curves use, so this is a different hash over the same file and has to
+        // be checked separately.
+        let identity = format!(
+            "corpus/clips/{clip_name}.y4m\n{frames}\n{}",
+            sha256_hex(&bytes)
+        );
+        let recorded = text_field(entry, "clip_sha256")?;
+        let actual = sha256_hex(identity.as_bytes());
+        if recorded != actual {
+            return Err(format!(
+                "{clip_name}: the average-bitrate source has changed since the receipt was \
+                 written (recorded {recorded}, found {actual})"
+            ));
+        }
+
+        let targets = entry
+            .get("targets")
+            .and_then(Json::as_array)
+            .ok_or_else(|| format!("{clip_name} reports no average-bitrate targets"))?;
+        // `--quick` checks the most aggressive target on each clip rather than
+        // every one. That is a different sample from the ladder ends the curves
+        // use, and deliberately: the controller is a leaky bucket, and the
+        // lowest target is where it is under the most pressure and where a
+        // change to it shows first. The nightly job runs every target.
+        let selected: Vec<usize> = if quick && !targets.is_empty() {
+            vec![0]
+        } else {
+            (0..targets.len()).collect()
+        };
+
+        let fps = f64::from(stream.fps_num) / f64::from(stream.fps_den);
+        let seconds = clip.len() as f64 / fps;
+
+        for index in selected {
+            let target = &targets[index];
+            let target_bps = integer(target, "target_bps")?;
+            let label = format!("{clip_name}/abr{target_bps}");
+
+            let sequence = SequenceHeader::new(
+                stream.width,
+                stream.height,
+                stream.fps_num,
+                stream.fps_den,
+                keyframe,
+                golden,
+            )
+            .map_err(|error| format!("{label}: {error}"))?;
+            let encoder = Encoder::with_bitrate(sequence, target_bps)
+                .map_err(|error| format!("{label}: {error}"))?;
+            let encoded = encoder
+                .encode(&clip)
+                .map_err(|error| format!("{label}: {error}"))?;
+
+            let fast = FastDecoder::new()
+                .decode_stream(&encoded.bytes)
+                .map_err(|error| format!("{label}: the fast decoder refused it: {error}"))?;
+            let reference = ReferenceDecoder::new()
+                .decode_stream(&encoded.bytes)
+                .map_err(|error| format!("{label}: the reference decoder refused it: {error}"))?;
+            if fast != reference {
+                return Err(format!("{label}: the two decoders disagree"));
+            }
+
+            // The controller is charged for the payload only. Counting the
+            // sequence header would charge it for bytes it never emits, and the
+            // campaign does not, so neither does this.
+            let coded_bits =
+                (encoded.bytes.len().saturating_sub(SEQUENCE_HEADER_SIZE) as f64) * 8.0;
+            let achieved_bps = coded_bits / seconds;
+            let error_percent =
+                100.0 * (achieved_bps - f64::from(target_bps)) / f64::from(target_bps);
+            let psnr = psnr_y(&clip, &fast).map_err(|error| format!("{label}: {error}"))?;
+            let ssim = ssim_y(&clip, &fast).map_err(|error| format!("{label}: {error}"))?;
+
+            let mut moved = |field: &str, recorded: f64, fresh: f64| {
+                let tolerance = 1e-9 * recorded.abs().max(fresh.abs()).max(1.0);
+                if (recorded - fresh).abs() > tolerance {
+                    differences.push(format!(
+                        "{label}: {field} recorded {recorded}, found {fresh}"
+                    ));
+                }
+            };
+            moved("bytes", real(target, "bytes")?, encoded.bytes.len() as f64);
+            moved("achieved_bps", real(target, "achieved_bps")?, achieved_bps);
+            moved(
+                "error_percent",
+                real(target, "error_percent")?,
+                error_percent,
+            );
+            moved("psnr_y", real(target, "psnr_y")?, psnr.global);
+            moved("ssim_y", real(target, "ssim_y")?, ssim.global);
+
+            let recorded_hash = text_field(target, "stream_sha256")?;
+            let fresh_hash = sha256_hex(&encoded.bytes);
+            if recorded_hash != fresh_hash {
+                differences.push(format!(
+                    "{label}: the coded stream is not the one the receipt names \
+                     (recorded {recorded_hash}, found {fresh_hash})"
+                ));
+            }
+
+            lines.push_str(&format!(
+                "\n    {clip_name} at {target_bps} bps: {error_percent:+.2}%"
+            ));
+            checked += 1;
+        }
+    }
+
+    if !differences.is_empty() {
+        return Err(format!(
+            "{} average-bitrate figure(s) no longer reproduce:\n  {}",
+            differences.len(),
+            differences.join("\n  ")
+        ));
+    }
+    Ok((checked, lines))
 }
 
 /// The shipping toolset against a previous release, on every clip they share.

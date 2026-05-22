@@ -339,3 +339,56 @@ fn a_bitrate_difference_that_does_not_follow_from_its_points_is_caught() {
         "a ten percent shift in a measured rate left the bitrate difference unchanged at {recorded}"
     );
 }
+
+#[test]
+fn the_published_average_bitrate_envelope_is_the_receipt_s_own() {
+    // `docs/LIMITATIONS.md` states a mean, a worst case, and a count of points
+    // over five percent. Those numbers used to be a memory of a sweep run once,
+    // against three encoder variants two of which no longer exist, and nothing
+    // recomputed them. They are the receipt's aggregate now, and this is what
+    // makes the page and the file agree: an encoder change that moves the
+    // controller fails here, and the sentence has to be rewritten in the same
+    // commit rather than quietly stop being true.
+    const PUBLISHED_MEAN: f64 = 2.32;
+    const PUBLISHED_WORST: f64 = 5.32;
+    const PUBLISHED_OVER_FIVE: usize = 1;
+
+    let document = receipt();
+    let control = document
+        .get("rate_control")
+        .expect("the receipt reports rate-control accuracy");
+    let errors: Vec<f64> = array(control, "clips")
+        .iter()
+        .flat_map(|clip| array(clip, "targets"))
+        .map(|target| {
+            target
+                .get("error_percent")
+                .and_then(Json::as_f64)
+                .expect("an accuracy figure")
+                .abs()
+        })
+        .collect();
+    assert!(
+        errors.len() >= 6,
+        "the receipt carries {} operating point(s), too few to be the sweep the page describes",
+        errors.len()
+    );
+
+    let mean = errors.iter().sum::<f64>() / errors.len() as f64;
+    let worst = errors.iter().copied().fold(0.0_f64, f64::max);
+    let over_five = errors.iter().filter(|error| **error > 5.0).count();
+
+    // Two decimals, because that is the precision the page publishes at.
+    assert!(
+        (mean - PUBLISHED_MEAN).abs() < 0.005,
+        "the page publishes a mean absolute error of {PUBLISHED_MEAN}%, the receipt gives {mean:.4}%"
+    );
+    assert!(
+        (worst - PUBLISHED_WORST).abs() < 0.005,
+        "the page publishes a worst case of {PUBLISHED_WORST}%, the receipt gives {worst:.4}%"
+    );
+    assert_eq!(
+        over_five, PUBLISHED_OVER_FIVE,
+        "the page publishes {PUBLISHED_OVER_FIVE} point(s) over five percent, the receipt has {over_five}"
+    );
+}

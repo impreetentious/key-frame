@@ -168,10 +168,15 @@ impl RateController {
 /// override it.
 ///
 /// The sixteenth is measured rather than chosen. Across twelve operating points
-/// on the pinned corpus, mean absolute rate error is 3.28% with no complexity
+/// on the pinned corpus, mean absolute rate error was 3.28% with no complexity
 /// term, 2.81% at a twelfth, 2.21% at a sixteenth, and 3.14% at a
-/// twenty-fourth; worst-case error falls from 6.74% to 5.31%. The numbers and
-/// the reasoning are in ADR-0016.
+/// twenty-fourth; worst-case error fell from 6.74% to 5.31%. That sweep
+/// compared three encoder variants two of which no longer exist, so it stays in
+/// ADR-0016 as the record of the decision rather than as a figure anything can
+/// recheck. What the build does still check is the shipped configuration: the
+/// campaign receipt carries six average-bitrate operating points, `rd_verify`
+/// re-encodes them, and `docs/LIMITATIONS.md` publishes the envelope they
+/// describe.
 const fn complexity_bias(last_sad: u64, complexity: u64, capacity: i64) -> i64 {
     // No history yet: the first frames have nothing to be harder or easier than.
     if complexity == 0 {

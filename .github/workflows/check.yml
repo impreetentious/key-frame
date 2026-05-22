@@ -9,12 +9,26 @@ permissions:
   contents: read
 
 jobs:
+  # `preflight.sh` is the whole gate list, and one of those gates builds the
+  # projection room and drives it in a real browser. This job used to set up
+  # Rust and nothing else, so the run reached step twenty-eight and asked for a
+  # Chromium that had never been installed — while the `site` workflow, which
+  # runs the same gate directly, declared exactly these steps. Two workflows
+  # disagreeing about what one script needs is the kind of thing that stays
+  # true until someone runs it.
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: actions-rust-lang/setup-rust-toolchain@fb51252c7ba57d633bc668f941da052e410add48 # v1.13.0
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions-rust-lang/setup-rust-toolchain@2b1f5e9b395427c92ee4e3331786ca3c37afe2d7 # v1.16.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: inspector/package-lock.json
+      - run: npm --prefix inspector ci
+      - run: npx --prefix inspector playwright install --with-deps chromium
       - run: ./scripts/preflight.sh
 
   bitexact-native:
@@ -26,6 +40,6 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: actions-rust-lang/setup-rust-toolchain@fb51252c7ba57d633bc668f941da052e410add48 # v1.13.0
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions-rust-lang/setup-rust-toolchain@2b1f5e9b395427c92ee4e3331786ca3c37afe2d7 # v1.16.0
       - run: ./scripts/ci/conformance-gate.sh

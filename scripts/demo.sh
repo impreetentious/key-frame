@@ -58,7 +58,13 @@ if [[ -z "$input" ]]; then
 fi
 
 rule "1. Encode"
-"$bin/kfenc" --input "$input" --qp "$qp" --output "$work_dir/out.kfv"
+# With --stats the table carries each frame's quality beside its size, and the
+# receipt beside it records the source and the coded stream by content hash. The
+# figures come from decoding what was just written, never from the encoder's own
+# reconstruction: the two are required to be identical, so measuring the copy
+# would hide the one bug that matters most.
+"$bin/kfenc" --input "$input" --qp "$qp" --output "$work_dir/out.kfv" \
+  --stats "$work_dir/encode-stats.json"
 
 rule "2. Decode, and read the header back field by field"
 "$bin/kfdec" "$work_dir/out.kfv" --output "$work_dir/decoded.y4m"
