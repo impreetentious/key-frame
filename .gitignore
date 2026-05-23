@@ -1,10 +1,6 @@
 # Rust
 /target/
 
-# Dependencies and web build output
-inspector/node_modules/
-inspector/dist/
-
 # Tests, reports, and local artifacts
 /artifacts/
 /out/

@@ -22,7 +22,45 @@ const RECONSTRUCTION_MIN: i32 = -32_768;
 const RECONSTRUCTION_MAX: i32 = 32_767;
 
 /// The largest coefficient magnitude a legal stream may carry.
-const COEFFICIENT_ABS_MAX: i32 = 32_767;
+/// The declared cap, read rather than restated.
+///
+/// This file used to carry `32_767`, which made it a fifth copy of the number
+/// and meant the test agreed with the code because both were typed the same,
+/// not because either agreed with the specification.
+fn coefficient_abs_max() -> i32 {
+    let asset = kf_spec::V1_ASSETS
+        .iter()
+        .find(|asset| asset.name == "quant.toml")
+        .expect("the specification exposes quant.toml");
+    asset
+        .contents
+        .lines()
+        .find_map(|line| {
+            line.strip_prefix("coefficient_abs_max = ")?
+                .trim()
+                .parse()
+                .ok()
+        })
+        .expect("quant.toml declares coefficient_abs_max")
+}
+
+/// The cap, one refusal past it, and the plan's own name for the trap.
+#[test]
+fn trap_coefficient_level_cap() {
+    let cap = coefficient_abs_max();
+    for qp in [0_u8, 32, 63] {
+        // Accepted at the cap, in both signs.
+        assert!(dequantize(cap, qp).is_ok(), "qp {qp}");
+        assert!(dequantize(-cap, qp).is_ok(), "qp {qp}");
+        // Refused one past it, in both signs, before any dequantization
+        // arithmetic runs.
+        assert!(dequantize(cap + 1, qp).is_err(), "qp {qp}");
+        assert!(dequantize(-cap - 1, qp).is_err(), "qp {qp}");
+        // And the quantizer never produces a level the decoder would refuse.
+        assert_eq!(quantize(i32::MAX, qp).unwrap(), cap, "qp {qp}");
+        assert_eq!(quantize(i32::MIN, qp).unwrap(), -cap, "qp {qp}");
+    }
+}
 
 #[test]
 fn trap_stage_width_overflow() {
@@ -32,7 +70,7 @@ fn trap_stage_width_overflow() {
         // Every position at the legal coefficient cap: the first stage must
         // accumulate in i64 and the second must land inside the documented
         // reconstruction domain rather than wrapping an i32.
-        for cap in [COEFFICIENT_ABS_MAX, -COEFFICIENT_ABS_MAX] {
+        for cap in [coefficient_abs_max(), -coefficient_abs_max()] {
             let output = inverse_transform(&vec![cap; count], size).unwrap();
             assert_eq!(output.len(), count);
             assert!(
@@ -86,8 +124,9 @@ fn trap_stage_width_overflow() {
         // sample is expected to pin at -32768 with no positive counterpart.
         // Checking every unsaturated pair keeps the rounding claim honest
         // without asserting the domain is something it is not.
-        let inverse = inverse_transform(&vec![COEFFICIENT_ABS_MAX; count], size).unwrap();
-        let negated_inverse = inverse_transform(&vec![-COEFFICIENT_ABS_MAX; count], size).unwrap();
+        let inverse = inverse_transform(&vec![coefficient_abs_max(); count], size).unwrap();
+        let negated_inverse =
+            inverse_transform(&vec![-coefficient_abs_max(); count], size).unwrap();
         let mut compared = 0_usize;
         for (index, (&positive, &negative)) in
             inverse.iter().zip(negated_inverse.iter()).enumerate()
@@ -136,16 +175,16 @@ fn trap_stage_width_overflow_in_quantization() {
     for qp in [0_u8, 1, 31, 62, 63] {
         // Quantization narrows through i64 and clamps at the coefficient cap.
         // An i32 intermediate would wrap long before this input.
-        assert_eq!(quantize(i32::MAX, qp).unwrap(), COEFFICIENT_ABS_MAX);
-        assert_eq!(quantize(i32::MIN, qp).unwrap(), -COEFFICIENT_ABS_MAX);
+        assert_eq!(quantize(i32::MAX, qp).unwrap(), coefficient_abs_max());
+        assert_eq!(quantize(i32::MIN, qp).unwrap(), -coefficient_abs_max());
         assert_eq!(quantize(0, qp).unwrap(), 0);
 
         // Dequantization of the cap stays inside i32 at every QP, and the
         // magnitude check fires before the arithmetic rather than after it.
-        let high = dequantize(COEFFICIENT_ABS_MAX, qp).unwrap();
-        let low = dequantize(-COEFFICIENT_ABS_MAX, qp).unwrap();
+        let high = dequantize(coefficient_abs_max(), qp).unwrap();
+        let low = dequantize(-coefficient_abs_max(), qp).unwrap();
         assert_eq!(high, -low, "dequantization is asymmetric at qp {qp}");
-        assert!(dequantize(COEFFICIENT_ABS_MAX + 1, qp).is_err());
-        assert!(dequantize(-COEFFICIENT_ABS_MAX - 1, qp).is_err());
+        assert!(dequantize(coefficient_abs_max() + 1, qp).is_err());
+        assert!(dequantize(-coefficient_abs_max() - 1, qp).is_err());
     }
 }

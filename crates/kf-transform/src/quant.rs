@@ -4,21 +4,53 @@ use kf_spec::V1_ASSETS;
 
 use crate::TransformError;
 
-const MAX_LEVEL: i32 = 32_767;
+/// The largest coefficient magnitude a conformant stream may carry.
+///
+/// Read from `quant.toml` rather than written here. It was `32_767` in this
+/// file, in the syntax layer, twice inside the reference decoder, and once more
+/// in the test that checks the boundary — five copies of a decoder-normative
+/// limit, agreeing with each other because the same number was typed five
+/// times. Editing the declaration changed the published specification and broke
+/// none of them.
+///
+/// `scripts/ci/declared-scalar-use.sh` counted the key as read, because
+/// `spec/check_assets.py` reconciles the two assets that state it. That is a
+/// real check of the assets and no check at all of the implementations, which
+/// is how this survived three audits of exactly this class.
+fn max_level() -> i32 {
+    static MAX: OnceLock<i32> = OnceLock::new();
+    *MAX.get_or_init(|| {
+        let asset = V1_ASSETS
+            .iter()
+            .find(|asset| asset.name == "quant.toml")
+            .expect("invariant: kf-spec exposes quant.toml");
+        asset
+            .contents
+            .lines()
+            .find_map(|line| {
+                line.strip_prefix("coefficient_abs_max = ")?
+                    .trim()
+                    .parse()
+                    .ok()
+            })
+            .expect("invariant: checked quant asset declares coefficient_abs_max")
+    })
+}
 
 /// Quantizes one transform coefficient with symmetric integer rounding.
 pub fn quantize(coefficient: i32, qp: u8) -> Result<i32, TransformError> {
     let scale = i64::from(scale(qp)?);
     let magnitude = i64::from(coefficient).saturating_abs();
     let level = magnitude.saturating_mul(16).saturating_add(scale / 2) / scale;
-    let clamped = level.min(i64::from(MAX_LEVEL));
+    let clamped = level.min(i64::from(max_level()));
     let signed = if coefficient < 0 { -clamped } else { clamped };
     Ok(i32::try_from(signed).expect("invariant: quantized level is clamped to i32"))
 }
 
 /// Dequantizes one legal bitstream coefficient in i64 before narrowing.
 pub fn dequantize(level: i32, qp: u8) -> Result<i32, TransformError> {
-    if level.unsigned_abs() > u32::try_from(MAX_LEVEL).expect("invariant: positive cap fits u32") {
+    if level.unsigned_abs() > u32::try_from(max_level()).expect("invariant: positive cap fits u32")
+    {
         return Err(TransformError::CoefficientMagnitude { level });
     }
     let value = (i64::from(level)

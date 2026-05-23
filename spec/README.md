@@ -11,7 +11,10 @@ and the range-coder vector path. It reads the inert field and constant assets
 and emits `v1/vectors.json`. `check_assets.py` recomputes reviewed numeric
 derivations and fails when any committed literal differs. `generate_docs.py`
 renders [`../docs/bitstream.md`](../docs/bitstream.md) and checks it byte for
-byte in preflight.
+byte in preflight. `mutation_check.py` changes one entry of one asset at a time
+and requires each change to be rejected, which is what makes the other three
+checks evidence rather than habit. `validate_probe.py` holds `kfprobe`'s output
+to the frozen probe schema.
 
 Run all specification checks with:
 

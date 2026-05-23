@@ -147,7 +147,8 @@ while read -r name value; do
     case "${hit#*:*:}" in
       *"$name"*) continue ;;
     esac
-    restated+="  $name ($value) spelled out at ${hit%%:*}:$(printf '%s' "$hit" | cut -d: -f2)"$'\n'
+    location="${hit#*:}"
+    restated+="  $name ($value) spelled out at ${hit%%:*}:${location%%:*}"$'\n'
   done < <(grep -rnE "(^|[^0-9.])${value}([^0-9.]|$)" \
     --include='*.sh' --include='*.mjs' --include='*.yml' \
     scripts .github 2>/dev/null || true)

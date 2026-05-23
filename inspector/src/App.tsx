@@ -202,17 +202,14 @@ export function App() {
     }
   };
 
-  /// Opens a pinned regression stream from the catalogue and switches back to
-  /// the picture, so a finding can be looked at rather than only read about.
-
-  /// Opens a pinned regression stream from the catalogue and switches back to
-  /// the picture, so a finding can be looked at rather than only read about.
   // The worst block is a fact about one frame. Carrying it across a scrub would
   // leave a figure on screen describing a picture nobody is looking at.
   useEffect(() => {
     setWorst(null);
   }, [view.frame]);
 
+  /// Opens a pinned regression stream from the catalogue and switches back to
+  /// the picture, so a finding can be looked at rather than only read about.
   const onOpenStream = useCallback(
     async (url: string, label: string) => {
       if (!decoder) return;

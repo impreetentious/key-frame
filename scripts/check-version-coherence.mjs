@@ -11,7 +11,7 @@
 // syntax change, and a syntax change must be an explicit decision rather than
 // a side effect of bumping a patch number.
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -77,13 +77,47 @@ if (version && has("inspector/package.json")) {
   }
 }
 
-// A published rate-distortion number is only reproducible if the encoder build
-// that produced it can be named. A hand-maintained version string would drift.
-for (const file of ["crates/kf-tools/src/main.rs"]) {
-  if (!has(file)) continue;
-  if (!read(file).includes('env!("CARGO_PKG_VERSION")')) {
-    errors.push(`${file} must derive runtime versions from CARGO_PKG_VERSION`);
+// A published figure is only reproducible if the build that produced it can be
+// named, so every receipt this repository writes carries an `encoder_version`
+// and every one of those has to come from the compiler rather than from a hand.
+//
+// This used to name one file — `crates/kf-tools/src/main.rs` — guarded by an
+// existence check, and that file has never existed in this layout: the tools are
+// separate binaries under `src/bin/`. So the check skipped, silently, for its
+// whole life, over a rule the receipts depend on.
+//
+// It finds the emitters now instead of naming them. A source that writes an
+// `encoder_version` field must derive it from `CARGO_PKG_VERSION`, and may not
+// carry a version-shaped literal of its own — which is the shape the drift
+// would actually take.
+const emitters = [];
+for (const directory of ["crates"]) {
+  const walk = (at) => {
+    for (const entry of readdirSync(path.join(root, at), { withFileTypes: true })) {
+      if (entry.name === "target") continue;
+      const next = `${at}/${entry.name}`;
+      if (entry.isDirectory()) walk(next);
+      else if (entry.name.endsWith(".rs")) emitters.push(next);
+    }
+  };
+  walk(directory);
+}
+
+let checked = 0;
+for (const file of emitters) {
+  const body = read(file);
+  if (!body.includes('"encoder_version"')) continue;
+  checked += 1;
+  if (!body.includes('env!("CARGO_PKG_VERSION")')) {
+    errors.push(`${file} writes an encoder_version that does not come from CARGO_PKG_VERSION`);
   }
+  const literal = body.match(/string\("(\d+\.\d+\.\d+)"\)/);
+  if (literal) {
+    errors.push(`${file} carries the version literal ${literal[1]}, which will not follow a bump`);
+  }
+}
+if (checked === 0) {
+  errors.push("no source writes an encoder_version, so the receipt version check is vacuous");
 }
 
 if (errors.length) {
@@ -92,4 +126,4 @@ if (errors.length) {
   process.exit(1);
 }
 
-console.log(`version-coherence OK — ${version}`);
+console.log(`version-coherence OK — ${version}, ${checked} receipt version(s) from the compiler`);

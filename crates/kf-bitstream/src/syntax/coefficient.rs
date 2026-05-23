@@ -1,9 +1,33 @@
+use std::sync::OnceLock;
+
+use kf_spec::V1_ASSETS;
+
 use crate::{
     BitstreamError, PlaneClass, SyntaxElement, SyntaxReader, SyntaxWriter, TransformBlockSize,
     syntax::scan::diagonal_scan,
 };
 
-const MAX_LEVEL: u32 = 32_767;
+/// The largest coefficient magnitude a conformant stream may carry, read from
+/// the asset that declares it rather than restated here.
+fn max_level() -> u32 {
+    static MAX: OnceLock<u32> = OnceLock::new();
+    *MAX.get_or_init(|| {
+        let asset = V1_ASSETS
+            .iter()
+            .find(|asset| asset.name == "quant.toml")
+            .expect("invariant: kf-spec exposes quant.toml");
+        asset
+            .contents
+            .lines()
+            .find_map(|line| {
+                line.strip_prefix("coefficient_abs_max = ")?
+                    .trim()
+                    .parse()
+                    .ok()
+            })
+            .expect("invariant: checked quant asset declares coefficient_abs_max")
+    })
+}
 
 impl SyntaxWriter {
     /// Writes one transform block, including the all-zero early termination.
@@ -17,7 +41,8 @@ impl SyntaxWriter {
         if levels.len() != expected {
             return Err(invalid("coefficient.block_length"));
         }
-        if levels.iter().any(|level| level.unsigned_abs() > MAX_LEVEL) {
+        let cap = max_level();
+        if levels.iter().any(|level| level.unsigned_abs() > cap) {
             return Err(invalid("coefficient.level_cap"));
         }
         let has_coeff = levels.iter().any(|&level| level != 0);
@@ -85,7 +110,7 @@ impl SyntaxWriter {
         nonzero_count: u16,
     ) -> Result<(), BitstreamError> {
         let magnitude = level.unsigned_abs();
-        if magnitude == 0 || magnitude > MAX_LEVEL {
+        if magnitude == 0 || magnitude > max_level() {
             return Err(invalid("coefficient.nonzero_level"));
         }
         let gt1 = magnitude > 1;
@@ -203,7 +228,7 @@ impl SyntaxReader<'_> {
                 2
             }
         };
-        if magnitude > MAX_LEVEL {
+        if magnitude > max_level() {
             return Err(invalid("coefficient.level_cap"));
         }
         let magnitude = i32::try_from(magnitude).map_err(|_| invalid("coefficient.level"))?;
