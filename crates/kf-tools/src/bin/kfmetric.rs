@@ -21,12 +21,14 @@ usage:
   kfmetric ssim   <reference.y4m> <distorted.y4m>
   kfmetric bdrate <baseline.json> <candidate.json>
   kfmetric repro  <report.json>
+  kfmetric report <report.json> [more.json ...]
 
 psnr and ssim report luma-only figures per frame and for the clip, as JSON.
 bdrate reads two rate-quality curve files, each a JSON array of
 {\"rate\": <bits per second>, \"quality\": <metric>} objects.
 repro recomputes a report from its recorded inputs and fails if any figure,
-input hash, or configuration hash has moved.";
+input hash, or configuration hash has moved.
+report renders saved reports as lines a person reads, rather than as JSON.";
 
 fn main() -> ExitCode {
     let arguments = env::args().skip(1).collect::<Vec<_>>();
@@ -49,6 +51,7 @@ fn run(arguments: &[String]) -> Result<String, String> {
         Some("ssim") => quality("ssim", arguments.get(1), arguments.get(2)),
         Some("bdrate") => rate_difference(arguments.get(1), arguments.get(2)),
         Some("repro") => repro(arguments.get(1)),
+        Some("report") => report(&arguments[1..]),
         Some(other) => Err(format!("unknown command {other}")),
         None => Err("no command given".to_owned()),
     }
@@ -233,6 +236,66 @@ fn differences(recorded: &Json, fresh: &Json) -> Vec<String> {
         }
     }
     moved
+}
+
+/// Renders one or more saved reports as lines a person reads.
+///
+/// The terminal demo used to do this in Python, inside the shell script, with
+/// unchecked dictionary lookups into `kfmetric`'s own output — a second reader
+/// of this tool's report, validated by nothing, that would have started raising
+/// a key error the first time the shape moved. The rendering belongs here,
+/// where the report is parsed by the same reader that writes it.
+fn report(paths: &[String]) -> Result<String, String> {
+    if paths.is_empty() {
+        return Err("no report given".to_owned());
+    }
+    let mut lines = Vec::new();
+    for path in paths {
+        let text = fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))?;
+        let document = Json::parse(&text).map_err(|error| format!("{path}: {error}"))?;
+        let metric = field(&document, "metric")?;
+        match metric.as_str() {
+            "bd-rate" => {
+                let percent = number_field(&document, "bd_rate_percent")?;
+                lines.push(format!(
+                    "  BD-rate  {percent:+.4}% bitrate at equal quality, over {} and {} points",
+                    number_field(&document, "baseline_points")? as u64,
+                    number_field(&document, "candidate_points")? as u64,
+                ));
+            }
+            "psnr-y" | "ssim-y" => {
+                let frames = number_field(&document, "frames")? as u64;
+                // A lossless clip has an unbounded PSNR and an SSIM of exactly
+                // one. The report writes `null` for the unbounded case, and the
+                // word is the only honest rendering of it.
+                let figure = match document.get("global").and_then(Json::as_f64) {
+                    Some(value) if value.is_finite() => format!("{value:.4}"),
+                    _ => "lossless".to_owned(),
+                };
+                // Decibels for PSNR, nothing for SSIM: it is a ratio, and a
+                // unit invented for it would be a unit nobody could convert.
+                let unit = if metric == "psnr-y" { " dB" } else { "" };
+                let name = metric.to_uppercase();
+                lines.push(format!("  {name}  {figure}{unit} over {frames} frames"));
+            }
+            other => {
+                return Err(format!(
+                    "{path}: {other} is not a metric this tool produces"
+                ));
+            }
+        }
+    }
+    lines.push("  Luma only, cropped to the displayed picture.".to_owned());
+    lines.push("  Regenerate any of these with: kfmetric repro <report.json>".to_owned());
+    Ok(lines.join("\n"))
+}
+
+/// A numeric field, refused by name rather than defaulted.
+fn number_field(value: &Json, key: &str) -> Result<f64, String> {
+    value
+        .get(key)
+        .and_then(Json::as_f64)
+        .ok_or_else(|| format!("the report has no numeric {key}"))
 }
 
 fn field(report: &Json, key: &str) -> Result<String, String> {

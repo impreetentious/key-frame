@@ -72,18 +72,9 @@ rule "2. Decode, and read the header back field by field"
 rule "3. Measure the decoded picture against the source"
 "$bin/kfmetric" psnr "$input" "$work_dir/decoded.y4m" > "$work_dir/psnr.json"
 "$bin/kfmetric" ssim "$input" "$work_dir/decoded.y4m" > "$work_dir/ssim.json"
-python3 - "$work_dir/psnr.json" "$work_dir/ssim.json" <<'PY'
-import json
-from pathlib import Path
-import sys
-
-psnr, ssim = (json.loads(Path(path).read_text(encoding="utf-8")) for path in sys.argv[1:3])
-figure = lambda report: "lossless" if report["lossless"] else "%.4f" % report["global"]
-print("  PSNR-Y  %s dB over %d frames" % (figure(psnr), psnr["frames"]))
-print("  SSIM-Y  %s" % figure(ssim))
-print("  Both figures are luma only, cropped to the displayed picture.")
-print("  Regenerate either with: kfmetric repro <report.json>")
-PY
+# Rendered by the tool that writes the format. This was the last place a shell
+# script read another tool's output with unchecked lookups of its own.
+"$bin/kfmetric" report "$work_dir/psnr.json" "$work_dir/ssim.json"
 
 rule "4. Inspect one frame's syntax"
 # The rendering lives in the tool, not here. It used to be twenty lines of

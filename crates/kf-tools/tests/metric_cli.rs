@@ -252,3 +252,131 @@ fn an_unknown_command_is_refused_with_the_usage() {
     assert!(err.contains("unknown command bogus"), "{err}");
     assert!(err.contains("usage:"), "{err}");
 }
+
+/// `kfmetric report`, the rendering the terminal demo used to do in Python.
+///
+/// The Python read this tool's own JSON with unchecked dictionary lookups, so a
+/// change to the report's shape would have surfaced as a traceback in the demo
+/// rather than as a failing test. It reads the report through the same parser
+/// that writes it now.
+mod rendering {
+    use std::{fs, path::PathBuf, process::Command};
+
+    /// A directory of this test's own. These run in parallel, and a shared one
+    /// would have each removing the files the others are still reading.
+    fn scratch(label: &str) -> PathBuf {
+        let directory = std::env::temp_dir().join(format!(
+            "key-frame-kfmetric-report-{label}-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&directory).expect("a scratch directory");
+        directory
+    }
+
+    fn kfmetric(arguments: &[&str]) -> (i32, String, String) {
+        let output = Command::new(env!("CARGO_BIN_EXE_kfmetric"))
+            .args(arguments)
+            .output()
+            .expect("kfmetric runs");
+        (
+            output.status.code().unwrap_or(-1),
+            String::from_utf8_lossy(&output.stdout).into_owned(),
+            String::from_utf8_lossy(&output.stderr).into_owned(),
+        )
+    }
+
+    /// Two clips: one flat, one with a single sample moved, so PSNR is finite.
+    fn clips(directory: &std::path::Path) -> (PathBuf, PathBuf) {
+        let write = |name: &str, nudge: bool| {
+            let mut bytes = b"YUV4MPEG2 W64 H64 F24:1 Ip A0:0 C420jpeg\n".to_vec();
+            for _ in 0..2 {
+                bytes.extend_from_slice(b"FRAME\n");
+                let mut luma = vec![100_u8; 64 * 64];
+                if nudge {
+                    luma[0] = 140;
+                }
+                bytes.extend_from_slice(&luma);
+                bytes.extend_from_slice(&vec![128_u8; 64 * 64 / 2]);
+            }
+            let path = directory.join(name);
+            fs::write(&path, bytes).expect("the clip is writable");
+            path
+        };
+        (write("reference.y4m", false), write("distorted.y4m", true))
+    }
+
+    #[test]
+    fn saved_reports_render_as_lines_a_person_reads() {
+        let directory = scratch("rendering");
+        let (reference, distorted) = clips(&directory);
+        let psnr = directory.join("psnr.json");
+        let ssim = directory.join("ssim.json");
+
+        for (metric, path) in [("psnr", &psnr), ("ssim", &ssim)] {
+            let (status, stdout, stderr) = kfmetric(&[
+                metric,
+                reference.to_str().unwrap(),
+                distorted.to_str().unwrap(),
+            ]);
+            assert_eq!(status, 0, "{stderr}");
+            fs::write(path, stdout).expect("the report is writable");
+        }
+
+        let (status, stdout, stderr) =
+            kfmetric(&["report", psnr.to_str().unwrap(), ssim.to_str().unwrap()]);
+        assert_eq!(status, 0, "{stderr}");
+        assert!(stdout.contains("PSNR-Y"), "{stdout}");
+        assert!(stdout.contains(" dB over 2 frames"), "{stdout}");
+        assert!(stdout.contains("SSIM-Y"), "{stdout}");
+        assert!(stdout.contains("Luma only"), "{stdout}");
+        assert!(stdout.contains("kfmetric repro"), "{stdout}");
+
+        // The figures are the report's, to the precision the report carries.
+        let document = kf_tools::Json::parse(&fs::read_to_string(&psnr).unwrap()).unwrap();
+        let global = document
+            .get("global")
+            .and_then(kf_tools::Json::as_f64)
+            .expect("a finite figure");
+        assert!(stdout.contains(&format!("{global:.4}")), "{stdout}");
+
+        fs::remove_dir_all(&directory).ok();
+    }
+
+    #[test]
+    fn a_lossless_report_says_so_rather_than_printing_a_large_number() {
+        // An identical pair has unbounded PSNR. The report writes `null`, and
+        // the word is the only honest rendering of it.
+        let directory = scratch("lossless");
+        let (reference, _) = clips(&directory);
+        let path = directory.join("lossless.json");
+        let (status, stdout, stderr) = kfmetric(&[
+            "psnr",
+            reference.to_str().unwrap(),
+            reference.to_str().unwrap(),
+        ]);
+        assert_eq!(status, 0, "{stderr}");
+        fs::write(&path, stdout).expect("the report is writable");
+
+        let (status, stdout, _) = kfmetric(&["report", path.to_str().unwrap()]);
+        assert_eq!(status, 0);
+        assert!(stdout.contains("lossless"), "{stdout}");
+
+        fs::remove_dir_all(&directory).ok();
+    }
+
+    #[test]
+    fn a_document_that_is_not_a_report_is_refused_by_name() {
+        let directory = scratch("refusal");
+        let path = directory.join("not-a-report.json");
+        fs::write(&path, "{\"metric\":\"guesswork\"}").unwrap();
+        let (status, _, stderr) = kfmetric(&["report", path.to_str().unwrap()]);
+        assert_ne!(status, 0);
+        assert!(stderr.contains("guesswork"), "{stderr}");
+
+        let (status, _, stderr) = kfmetric(&["report"]);
+        assert_ne!(status, 0);
+        assert!(stderr.contains("no report given"), "{stderr}");
+
+        fs::remove_dir_all(&directory).ok();
+    }
+}

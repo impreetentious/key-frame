@@ -190,7 +190,13 @@ function drawPartitionGrid({ context, report, scale }: OverlayContext): void {
 /// One glyph per intra mode, drawn as the direction the mode predicts from.
 /// Directional modes get a line at their angle; DC and planar get their own
 /// marks, because neither has a direction to draw.
-const INTRA_ANGLES: Record<string, number> = {
+///
+/// The eight modes `spec/v1/intra.toml` declares are these six plus those two,
+/// and `inspector/tests/encoding.spec.ts` reads that file and requires the sets
+/// to match. Without the check, a mode this table did not know fell through to
+/// the DC branch and was drawn as a flat average — a confident glyph for a
+/// directional prediction, which is worse than no glyph.
+export const INTRA_ANGLES: Record<string, number> = {
   horizontal: 0,
   vertical: 90,
   d45: 45,
@@ -217,9 +223,16 @@ function drawIntraGlyphs({ context, report, scale }: OverlayContext): void {
         context.lineTo(centreX + reach, centreY + reach);
         context.moveTo(centreX - reach, centreY + reach);
         context.lineTo(centreX + reach, centreY - reach);
-      } else {
+      } else if (mode === "dc") {
         // DC: a flat average, drawn flat.
         context.arc(centreX, centreY, Math.max(2, reach / 2), 0, Math.PI * 2);
+      } else {
+        // A mode this page has no glyph for. Drawn as a hollow square, which
+        // says "something predicted this and it is not one of the eight I
+        // know" — where the DC circle would have said, wrongly and
+        // confidently, "a flat average".
+        const side = Math.max(3, reach);
+        context.rect(centreX - side / 2, centreY - side / 2, side, side);
       }
     } else {
       const radians = (angle * Math.PI) / 180;
