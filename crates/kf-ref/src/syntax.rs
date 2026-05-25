@@ -252,7 +252,7 @@ fn read_level(
             2
         }
     };
-    if magnitude > crate::declared_coefficient_abs_max() {
+    if magnitude > crate::limits().coefficient_abs_max {
         return Err(ReferenceError::new(0, "coefficient.level_cap"));
     }
     let magnitude =

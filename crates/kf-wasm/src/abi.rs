@@ -25,7 +25,7 @@
 //!
 //! An offset that crosses this boundary is a pointer the host will hand back,
 //! so every address here is exposed and recovered explicitly — `expose_provenance`
-//! going out, `with_exposed_provenance_mut` coming in. Written as `as` casts, the
+//! going out, `with_exposed_provenance` coming in. Written as `as` casts, the
 //! same round trip compiles and runs identically while telling the compiler the
 //! provenance ended at the boundary, which is the one thing that is not true
 //! about it.
@@ -35,7 +35,7 @@
 
 use core::cell::RefCell;
 
-use crate::session::{Session, Status};
+use crate::session::{PacketOutcome, Session, Status};
 
 /// The boundary contract's version. A host checks this before anything else;
 /// it changes only when the meaning of an existing entry point changes.
@@ -100,6 +100,47 @@ pub extern "C" fn kf_free(offset: usize, len: usize) {
     }
 }
 
+/// Opens a stream that may be damaged, walking it to the end.
+///
+/// The strict `kf_open` refuses anything a linear decode would refuse, which is
+/// the right answer for a stream that should be intact. This is the other
+/// question: what do the corruption rules do to this file? Afterwards
+/// `kf_recovery_len` and `kf_recovery_at` report how each structurally accepted
+/// packet was classified, and the frames the host can ask for are the display
+/// timeline the normative document defines.
+#[unsafe(no_mangle)]
+pub extern "C" fn kf_open_tolerant(offset: usize, len: usize) -> u32 {
+    if offset == 0 && len != 0 {
+        return Status::BadStream.code();
+    }
+    // SAFETY: the host contract is that `offset` and `len` describe a buffer it
+    // obtained from `kf_alloc` and filled, so the range is inside this module's
+    // memory, initialized, and not aliased for writing while this call runs.
+    let bytes = unsafe {
+        core::slice::from_raw_parts(core::ptr::with_exposed_provenance::<u8>(offset), len)
+    }
+    .to_vec();
+    SESSION.with_borrow_mut(|session| session.open_tolerant(bytes).code())
+}
+
+/// How many packets the last tolerant open classified. Zero after a strict one.
+#[unsafe(no_mangle)]
+pub extern "C" fn kf_recovery_len() -> usize {
+    SESSION.with_borrow(|session| session.recovery().len())
+}
+
+/// One packet's outcome, by position. Out of range answers `u32::MAX`, which is
+/// not one of the five codes.
+#[unsafe(no_mangle)]
+pub extern "C" fn kf_recovery_at(position: usize) -> u32 {
+    SESSION.with_borrow(|session| {
+        session
+            .recovery()
+            .get(position)
+            .map_or(u32::MAX, |status| PacketOutcome::of(*status).code())
+    })
+}
+
 /// Opens a stream previously written into the module's memory.
 #[unsafe(no_mangle)]
 pub extern "C" fn kf_open(offset: usize, len: usize) -> u32 {
@@ -111,7 +152,10 @@ pub extern "C" fn kf_open(offset: usize, len: usize) -> u32 {
     // memory, initialized, and not aliased for writing while this call runs.
     // The bytes are copied into the session immediately; nothing retains the
     // borrow past this statement.
-    let bytes = unsafe { core::slice::from_raw_parts(offset as *const u8, len) }.to_vec();
+    let bytes = unsafe {
+        core::slice::from_raw_parts(core::ptr::with_exposed_provenance::<u8>(offset), len)
+    }
+    .to_vec();
     SESSION.with_borrow_mut(|session| session.open(bytes).code())
 }
 
@@ -260,7 +304,11 @@ mod tests {
         // SAFETY: `offset` is the offset of a buffer of exactly `len` bytes
         // just returned by `kf_alloc`, and nothing else holds a reference to it.
         unsafe {
-            core::ptr::copy_nonoverlapping(ORACLE_STREAM.as_ptr(), offset as *mut u8, len);
+            core::ptr::copy_nonoverlapping(
+                ORACLE_STREAM.as_ptr(),
+                core::ptr::with_exposed_provenance_mut::<u8>(offset),
+                len,
+            );
         }
         (offset, len)
     }

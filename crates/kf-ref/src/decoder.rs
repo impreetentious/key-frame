@@ -177,15 +177,18 @@ impl ReferenceDecoder {
                     .ok_or_else(|| ReferenceError::new(0, "pframe.contexts"))?,
             )?
         };
-        let padded_width = u32::from(width).div_ceil(64) * 64;
-        let padded_height = u32::from(height).div_ceil(64) * 64;
+        // The superblock side is declared, not sixty-four written four times.
+        let superblock = crate::limits().superblock_size;
+        let padded_width = u32::from(width).div_ceil(superblock) * superblock;
+        let padded_height = u32::from(height).div_ceil(superblock) * superblock;
         let mut frame = Frame::filled_420(padded_width, padded_height, 0)
             .map_err(|_| ReferenceError::new(0, "frame.allocate"))?;
         let mut motion_field = RefMotionField::new(padded_width, padded_height)?;
         let mut coded_blocks = Vec::new();
         let mut checkpoints = Vec::new();
-        for superblock_y in (0..padded_height).step_by(64) {
-            for superblock_x in (0..padded_width).step_by(64) {
+        let stride = usize::try_from(superblock).expect("a superblock side fits an index");
+        for superblock_y in (0..padded_height).step_by(stride) {
+            for superblock_x in (0..padded_width).step_by(stride) {
                 let blocks = read_partition(&mut range, superblock_x, superblock_y)?;
                 for block in blocks {
                     let prediction = read_prediction(&mut range, packet.key)?;
@@ -628,14 +631,22 @@ fn read_sequence(bytes: &[u8]) -> Result<(u16, u16, usize), ReferenceError> {
     }
     let width = reader.u16("sequence.width")?;
     let height = reader.u16("sequence.height")?;
-    if !(64..=4096).contains(&width)
+    let bounds = crate::limits();
+    // The declared bounds are widths, and a header field is a `u16`. Comparing
+    // in the wider type keeps the declaration free to name a bound this field
+    // could not hold, which would then be caught here rather than truncated
+    // into range.
+    let (wide_width, wide_height) = (u32::from(width), u32::from(height));
+    if !(bounds.min_width..=bounds.max_width).contains(&wide_width)
         || !width.is_multiple_of(2)
-        || !(64..=2304).contains(&height)
+        || !(bounds.min_height..=bounds.max_height).contains(&wide_height)
         || !height.is_multiple_of(2)
     {
         return Err(ReferenceError::new(6, "sequence.dimensions"));
     }
-    if reader.u8("sequence.chroma")? != 1 || reader.u8("sequence.depth")? != 8 {
+    if reader.u8("sequence.chroma")? != bounds.chroma_code
+        || reader.u8("sequence.depth")? != bounds.bit_depth
+    {
         return Err(ReferenceError::new(10, "sequence.format"));
     }
     for element in ["fps_num", "fps_den", "kf_interval"] {

@@ -509,3 +509,85 @@ button:hover {
 .ablations td.negative {
   color: var(--good);
 }
+
+/*
+ * The recovery strip: one cell per packet of a walked stream, coloured by what
+ * the corruption rules made of it. Green is an image, warm is damage, and the
+ * accent is a keyframe that resumed decoding — the same three colours the rest
+ * of the page uses for "this is real", "this went wrong", and "look here".
+ */
+.recovery {
+  margin-top: 22px;
+  padding: 14px 16px;
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+.recovery h2 {
+  margin: 0 0 6px;
+  font-size: 1rem;
+}
+
+.packets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin: 12px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.packet {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--edge);
+  border-radius: 3px;
+  background: var(--ground);
+  cursor: pointer;
+}
+
+.packet.shown {
+  background: rgba(124, 224, 168, 0.5);
+}
+
+.packet.corrupt {
+  background: rgba(255, 157, 122, 0.65);
+}
+
+.packet.dependency {
+  background: rgba(255, 157, 122, 0.28);
+}
+
+.packet.recovered {
+  background: rgba(255, 214, 122, 0.6);
+}
+
+.packet[aria-current="true"] {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* A label the screen reader hears and the layout never sees. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* A button that reads as part of the sentence it sits in. */
+.inline {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}

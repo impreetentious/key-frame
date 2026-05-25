@@ -1,53 +1,6 @@
-use std::sync::OnceLock;
-
-use kf_spec::V1_ASSETS;
-
-use crate::{ReferenceError, crc::crc32c, reader::ByteReader};
+use crate::{ReferenceError, crc::crc32c, limits, reader::ByteReader};
 
 const FRAME_HEADER_SIZE: usize = 24;
-
-/// The payload bounds this scanner admits, read from the frozen constants.
-///
-/// Both were literals here — `16 * 1024 * 1024` and a bare `5` — matching the
-/// literals the production packet layer carries. That made the two decoders
-/// agree about which packets are structurally admissible because two people
-/// typed the same numbers, rather than because both read the specification, and
-/// nothing anywhere compared them: `crates/kf-bitstream/tests/normative_limits.rs`
-/// drives the production constructor with the declared values, and there was no
-/// counterpart on this side. A vector at either boundary would have caught a
-/// drift, and no vector reaches them — the upper one is sixteen megabytes.
-///
-/// Reading the same asset is not sharing an implementation. This parses it with
-/// this crate's own reader, into this crate's own constants, and disagreement
-/// with the specification remains the only way the two decoders can disagree
-/// while both looking correct.
-struct PayloadBounds {
-    minimum: u32,
-    maximum: u32,
-}
-
-fn payload_bounds() -> &'static PayloadBounds {
-    static BOUNDS: OnceLock<PayloadBounds> = OnceLock::new();
-    BOUNDS.get_or_init(|| PayloadBounds {
-        minimum: declared("decoder_initial_bytes"),
-        maximum: declared("max_payload_bytes"),
-    })
-}
-
-fn declared(key: &str) -> u32 {
-    let asset = V1_ASSETS
-        .iter()
-        .find(|asset| asset.name == "constants.toml")
-        .expect("invariant: kf-spec exposes constants.toml");
-    asset
-        .contents
-        .lines()
-        .find_map(|line| {
-            let (name, value) = line.split_once('=')?;
-            (name.trim() == key).then(|| value.trim().parse::<u32>().ok())?
-        })
-        .expect("invariant: checked constants declare the packet payload bounds")
-}
 
 pub(crate) struct RefPacket<'a> {
     pub payload: &'a [u8],
@@ -213,8 +166,8 @@ fn read_header(bytes: &[u8]) -> Result<PacketHeader, ReferenceError> {
         return Err(ReferenceError::new(0, "packet.sync"));
     }
     let payload_len = u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
-    let bounds = payload_bounds();
-    if !(bounds.minimum..=bounds.maximum).contains(&payload_len) {
+    let bounds = limits();
+    if !(bounds.payload_minimum..=bounds.payload_maximum).contains(&payload_len) {
         return Err(ReferenceError::new(4, "packet.payload_len"));
     }
     let flag_bits = bytes[12];
@@ -224,7 +177,7 @@ fn read_header(bytes: &[u8]) -> Result<PacketHeader, ReferenceError> {
     if flag_bits & 0xf8 != 0 || !show || (key && !golden_refresh) {
         return Err(ReferenceError::new(12, "packet.flags"));
     }
-    if bytes[13] > 63 || u16::from_le_bytes([bytes[14], bytes[15]]) != 0 {
+    if bytes[13] > limits().qp_max || u16::from_le_bytes([bytes[14], bytes[15]]) != 0 {
         return Err(ReferenceError::new(13, "packet.qp_or_reserved"));
     }
     let header_crc = u32::from_le_bytes([bytes[16], bytes[17], bytes[18], bytes[19]]);
@@ -244,8 +197,8 @@ fn read_packet(bytes: &[u8]) -> Result<RefPacket<'_>, ReferenceError> {
         return Err(ReferenceError::new(0, "packet.sync"));
     }
     let payload_len = reader.u32("packet.payload_len")?;
-    let bounds = payload_bounds();
-    if !(bounds.minimum..=bounds.maximum).contains(&payload_len) {
+    let bounds = limits();
+    if !(bounds.payload_minimum..=bounds.payload_maximum).contains(&payload_len) {
         return Err(ReferenceError::new(4, "packet.payload_len"));
     }
     let frame_index = reader.u32("packet.frame_index")?;
@@ -257,7 +210,7 @@ fn read_packet(bytes: &[u8]) -> Result<RefPacket<'_>, ReferenceError> {
         return Err(ReferenceError::new(12, "packet.flags"));
     }
     let qp = reader.u8("packet.qp")?;
-    if qp > 63 || reader.u16("packet.reserved")? != 0 {
+    if qp > limits().qp_max || reader.u16("packet.reserved")? != 0 {
         return Err(ReferenceError::new(13, "packet.qp_or_reserved"));
     }
     let header_crc = reader.u32("packet.header_crc")?;
@@ -284,8 +237,9 @@ fn read_packet(bytes: &[u8]) -> Result<RefPacket<'_>, ReferenceError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{FRAME_HEADER_SIZE, payload_bounds, read_header};
+    use super::{FRAME_HEADER_SIZE, read_header};
     use crate::crc::crc32c;
+    use crate::limits;
 
     /// A structurally valid header declaring `payload_len`, sealed so that the
     /// only thing that can refuse it is the bound under test.
@@ -309,16 +263,16 @@ mod tests {
         // with the document, and nothing compared them. No committed vector
         // reaches either boundary — the upper one is sixteen megabytes — so the
         // header is driven directly.
-        let bounds = payload_bounds();
+        let bounds = limits();
 
         assert_eq!(
-            read_header(&header(bounds.maximum + 1))
+            read_header(&header(bounds.payload_maximum + 1))
                 .expect_err("a payload past the declared cap was admitted")
                 .element,
             "packet.payload_len"
         );
         assert_eq!(
-            read_header(&header(bounds.minimum - 1))
+            read_header(&header(bounds.payload_minimum - 1))
                 .expect_err("a payload under the decoder's initial read was admitted")
                 .element,
             "packet.payload_len"
@@ -327,7 +281,7 @@ mod tests {
         // And the positive half, so this cannot pass by refusing everything.
         // Only the length is under test here; the header carries no payload, so
         // whatever happens next is a different question.
-        for length in [bounds.minimum, bounds.maximum] {
+        for length in [bounds.payload_minimum, bounds.payload_maximum] {
             assert_eq!(
                 read_header(&header(length))
                     .expect("a length inside the declared bounds was refused")
@@ -335,5 +289,130 @@ mod tests {
                 length
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod declared_limits {
+    use crate::{ReferenceDecoder, limits};
+
+    /// A sequence header carrying the fields given, checksum resealed so that
+    /// the only thing that can refuse it is the limit under test.
+    fn sequence(width: u16, height: u16, chroma: u8, depth: u8) -> Vec<u8> {
+        let mut bytes = vec![0_u8; 24];
+        bytes[..4].copy_from_slice(b"KFV1");
+        bytes[4..6].copy_from_slice(&1_u16.to_le_bytes());
+        bytes[6..8].copy_from_slice(&width.to_le_bytes());
+        bytes[8..10].copy_from_slice(&height.to_le_bytes());
+        bytes[10] = chroma;
+        bytes[11] = depth;
+        bytes[12..14].copy_from_slice(&24_u16.to_le_bytes());
+        bytes[14..16].copy_from_slice(&1_u16.to_le_bytes());
+        bytes[16..18].copy_from_slice(&120_u16.to_le_bytes());
+        bytes[18] = 16;
+        let checksum = crate::crc::crc32c(&bytes[..20]);
+        bytes[20..24].copy_from_slice(&checksum.to_le_bytes());
+        bytes
+    }
+
+    /// Whether this decoder gets past the sequence header of `bytes`.
+    ///
+    /// A header-only stream never decodes, so the question asked is narrower:
+    /// did it fail on the header, or on the absence of packets after it?
+    fn header_is_accepted(bytes: &[u8]) -> bool {
+        match ReferenceDecoder::new().decode_stream(bytes) {
+            Ok(_) => true,
+            Err(error) => !error.element.starts_with("sequence."),
+        }
+    }
+
+    #[test]
+    fn the_picture_bounds_are_the_ones_the_specification_declares() {
+        // The production decoder is driven this way by
+        // `crates/kf-bitstream/tests/normative_limits.rs`. This side carried
+        // `64..=4096` and `64..=2304` as literals and nothing compared them
+        // with the declaration or with the other decoder.
+        let bounds = limits();
+        let side = |value: u32| u16::try_from(value).expect("a declared picture bound fits u16");
+        let (min_width, max_width) = (side(bounds.min_width), side(bounds.max_width));
+        let (min_height, max_height) = (side(bounds.min_height), side(bounds.max_height));
+
+        assert!(header_is_accepted(&sequence(
+            min_width,
+            min_height,
+            bounds.chroma_code,
+            bounds.bit_depth
+        )));
+        assert!(header_is_accepted(&sequence(
+            max_width,
+            max_height,
+            bounds.chroma_code,
+            bounds.bit_depth
+        )));
+        assert!(!header_is_accepted(&sequence(
+            min_width - 2,
+            min_height,
+            bounds.chroma_code,
+            bounds.bit_depth
+        )));
+        assert!(!header_is_accepted(&sequence(
+            min_width,
+            min_height - 2,
+            bounds.chroma_code,
+            bounds.bit_depth
+        )));
+        assert!(!header_is_accepted(&sequence(
+            max_width + 2,
+            max_height,
+            bounds.chroma_code,
+            bounds.bit_depth
+        )));
+        assert!(!header_is_accepted(&sequence(
+            min_width,
+            max_height + 2,
+            bounds.chroma_code,
+            bounds.bit_depth
+        )));
+    }
+
+    #[test]
+    fn the_sample_format_is_the_one_the_specification_declares() {
+        let bounds = limits();
+        let side = |value: u32| u16::try_from(value).expect("a declared picture bound fits u16");
+        let (width, height) = (side(bounds.min_width), side(bounds.min_height));
+        assert!(header_is_accepted(&sequence(
+            width,
+            height,
+            bounds.chroma_code,
+            bounds.bit_depth
+        )));
+        assert!(!header_is_accepted(&sequence(
+            width,
+            height,
+            bounds.chroma_code + 1,
+            bounds.bit_depth
+        )));
+        assert!(!header_is_accepted(&sequence(
+            width,
+            height,
+            bounds.chroma_code,
+            bounds.bit_depth + 2
+        )));
+    }
+
+    #[test]
+    fn the_declared_limits_are_the_shape_a_reader_would_expect() {
+        // Not a comparison of two literals: this asserts the relations that
+        // make the declarations usable at all, so a declaration edited into
+        // nonsense fails here rather than several layers away.
+        let bounds = limits();
+        assert!(bounds.min_width <= bounds.max_width);
+        assert!(bounds.min_height <= bounds.max_height);
+        assert_eq!(bounds.min_width % 2, 0);
+        assert_eq!(bounds.max_width % 2, 0);
+        assert!(bounds.min_width >= bounds.superblock_size);
+        assert!(bounds.payload_minimum < bounds.payload_maximum);
+        assert!(bounds.qp_max > 0);
+        assert!(bounds.coefficient_abs_max > 0);
     }
 }

@@ -9,7 +9,7 @@ pub(crate) fn inverse_levels(
     let coefficients: Vec<i32> = levels
         .iter()
         .map(|&level| {
-            if level.unsigned_abs() > crate::declared_coefficient_abs_max() {
+            if level.unsigned_abs() > crate::limits().coefficient_abs_max {
                 return Err(crate::ReferenceError::new(0, "coefficient.level_cap"));
             }
             let value = (i64::from(level) * i64::from(scale) + 8) >> 4;

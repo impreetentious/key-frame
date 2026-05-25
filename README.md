@@ -72,7 +72,10 @@ specification. Every gate in the repository exists to prove the two agree.
 - Ships the projection room: a static page that decodes a stream live, scrubs it
   with keyframe ticks, draws six syntax overlays, answers a click with the
   block's full syntax, and shares any of it as a link. Nothing on that page is a
-  pre-decoded picture.
+  pre-decoded picture. A stream it refuses can be walked to its end instead, one
+  cell per packet, showing what the corruption rules did to each — the part of
+  the format specified most carefully and, until now, watchable only from a
+  test.
 - Measures what each encoder tool is worth by turning it off and encoding
   again, publishes the curves with the configuration that produced them, and
   re-derives every point on demand. The page that draws them computes none of
@@ -244,4 +247,4 @@ preflight green.
 
 ---
 
-**Version:** v0.13.18
+**Version:** v0.13.19

@@ -42,6 +42,9 @@ interface Exports {
   kf_alloc(len: number): number;
   kf_free(offset: number, len: number): void;
   kf_open(offset: number, len: number): number;
+  kf_open_tolerant(offset: number, len: number): number;
+  kf_recovery_len(): number;
+  kf_recovery_at(position: number): number;
   kf_decode_frame(index: number): number;
   kf_decode_all(): number;
   kf_probe_frame(index: number): number;
@@ -68,6 +71,22 @@ export interface StreamInfo {
   frameCount: number;
   keyframes: number[];
 }
+
+/// What the corruption rules made of one packet.
+///
+/// The names are this page's; the numbers are the module's, and the module
+/// pins them one by one. A code outside the five is reported as `unknown`
+/// rather than guessed at, because a host that invented a meaning for a number
+/// it did not recognise would be describing a decoder it is not talking to.
+export const PACKET_OUTCOMES = [
+  "shown",
+  "corrupt",
+  "dependency lost",
+  "recovered after a gap",
+  "recovered after leading loss",
+] as const;
+
+export type PacketOutcome = (typeof PACKET_OUTCOMES)[number] | "unknown";
 
 /// One decoded frame, still in the codec's own planar form.
 ///
@@ -132,6 +151,13 @@ export class Decoder {
       this.info = null;
       throw new DecoderError(status, this.message());
     }
+    return this.readStreamInfo();
+  }
+
+  /// The shape of whatever stream is now open. Both open paths report it the
+  /// same way, because a host scrubbing a timeline does not need to know which
+  /// door it came through.
+  private readStreamInfo(): StreamInfo {
     const keyframes: number[] = [];
     for (let position = 0; position < this.exports.kf_keyframe_count(); position += 1) {
       keyframes.push(this.exports.kf_keyframe_at(position));
@@ -145,6 +171,39 @@ export class Decoder {
       keyframes,
     };
     return this.info;
+  }
+
+  /// Hands over a stream that may be damaged, and walks it to the end.
+  ///
+  /// `open` refuses what a linear decode would refuse, which is right for a
+  /// stream that should be intact and useless for seeing what the rules do to
+  /// one that is not. After this, `recovery()` says how each packet was
+  /// classified and the frames are the display timeline: a packet that produced
+  /// no image repeats the last shown one.
+  openTolerant(stream: Uint8Array): StreamInfo {
+    const offset = this.exports.kf_alloc(stream.length);
+    if (offset === 0 && stream.length > 0) {
+      throw new Error("the decoder could not allocate room for the stream");
+    }
+    new Uint8Array(this.exports.memory.buffer, offset, stream.length).set(stream);
+    const status = this.exports.kf_open_tolerant(offset, stream.length);
+    this.exports.kf_free(offset, stream.length);
+    if (status !== 0) {
+      this.info = null;
+      throw new DecoderError(status, this.message());
+    }
+    return this.readStreamInfo();
+  }
+
+  /// How each structurally accepted packet was classified, in scan order.
+  /// Empty for a stream opened strictly.
+  recovery(): PacketOutcome[] {
+    const outcomes: PacketOutcome[] = [];
+    for (let position = 0; position < this.exports.kf_recovery_len(); position += 1) {
+      const code = this.exports.kf_recovery_at(position);
+      outcomes.push(PACKET_OUTCOMES[code] ?? "unknown");
+    }
+    return outcomes;
   }
 
   get stream(): StreamInfo | null {

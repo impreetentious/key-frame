@@ -21,4 +21,4 @@ mod abi;
 mod session;
 
 pub use abi::ABI_VERSION;
-pub use session::{Session, Status, StreamInfo};
+pub use session::{PacketOutcome, Session, Status, StreamInfo};

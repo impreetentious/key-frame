@@ -396,3 +396,70 @@ test("average-bitrate accuracy is reported apart from the curves", async ({ page
     expect(label).toMatch(/for 6 toolsets$/);
   }
 });
+
+test("a damaged stream is refused, then walked, and the page says what the rules did", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.getByText("64×64")).toBeVisible();
+
+  // The sample stream with one payload byte of its second packet flipped. Built
+  // here rather than committed: a damaged file is a test input, and the
+  // conformance suite is for streams that are supposed to decode.
+  await page.evaluate(async () => {
+    const bytes = new Uint8Array(await (await fetch("./sample.kfv")).arrayBuffer());
+    const sync = [0x4b, 0x46, 0x50, 0x31];
+    const offsets: number[] = [];
+    for (let at = 24; at + 24 <= bytes.length; ) {
+      if (sync.every((byte, index) => bytes[at + index] === byte)) {
+        const view = new DataView(bytes.buffer, bytes.byteOffset);
+        offsets.push(at);
+        at += 24 + view.getUint32(at + 4, true);
+      } else {
+        at += 1;
+      }
+    }
+    if (offsets.length < 2) throw new Error("the sample has too few packets to damage");
+    const target = offsets[1]! + 24 + 1;
+    bytes[target] = (bytes[target] ?? 0) ^ 0xff;
+
+    const input = document.querySelector<HTMLInputElement>('input[type="file"][accept=".kfv"]');
+    if (!input) throw new Error("the stream input is not on the page");
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([bytes], "damaged.kfv", { type: "application/octet-stream" }));
+    input.files = transfer.files;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+
+  // Refused first, which is the right answer for a stream that should be intact.
+  const offer = page.getByRole("button", { name: /Walk it anyway/ });
+  await expect(offer).toBeVisible();
+
+  // And then walked, with one cell per packet and the counts stated in words.
+  await offer.click();
+  await expect(page.getByRole("heading", { name: "What the rules did" })).toBeVisible();
+  const packets = page.locator(".packets .packet");
+  await expect(packets).toHaveCount(3);
+  await expect(page.getByText(/3 packet\(s\): 1 decoded, 2 did not/)).toBeVisible();
+
+  // The classifications reached the page rather than being summarised away.
+  await expect(page.getByText(/packet 1: corrupt/)).toBeAttached();
+  await expect(page.getByText(/packet 2: dependency lost/)).toBeAttached();
+
+  // A lost packet shows the last image that decoded, held. The canvas is
+  // checked rather than the element: a held frame that drew nothing would look
+  // the same in the DOM.
+  const pixelsAt = async (position: number) => {
+    await packets.nth(position).click();
+    return page.evaluate(() => {
+      const canvas = document.querySelector<HTMLCanvasElement>(".picture");
+      const context = canvas?.getContext("2d");
+      if (!canvas || !context) return "";
+      return [...context.getImageData(0, 0, canvas.width, canvas.height).data].join(",");
+    });
+  };
+  const first = await pixelsAt(0);
+  expect(first.length).toBeGreaterThan(0);
+  expect(await pixelsAt(1)).toBe(first);
+  expect(await pixelsAt(2)).toBe(first);
+});

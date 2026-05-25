@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { Decoder, type DecodedFrame, type StreamInfo } from "./decoder";
+import {
+  Decoder,
+  type DecodedFrame,
+  type PacketOutcome,
+  type StreamInfo,
+} from "./decoder";
 import { BlockPanel } from "./BlockPanel";
 import { CuttingRoom } from "./CuttingRoom";
 import { Curves } from "./Curves";
@@ -38,6 +43,12 @@ export function App() {
   // says so rather than estimating.
   const [sourceClip, setSourceClip] = useState<SourceClip | null>(null);
   const [worst, setWorst] = useState<WorstBlock | null>(null);
+  // A stream the strict decoder refused, kept so the visitor can ask what the
+  // corruption rules make of it. Holding the bytes is the whole feature: the
+  // rules are the most carefully specified part of this format and the only
+  // part nobody could previously watch run.
+  const [refused, setRefused] = useState<Uint8Array | null>(null);
+  const [recovery, setRecovery] = useState<PacketOutcome[] | null>(null);
 
   const pictureRef = useRef<HTMLCanvasElement | null>(null);
   const overlayRef = useRef<HTMLCanvasElement | null>(null);
@@ -49,6 +60,8 @@ export function App() {
         setInfo(opened);
         setSource(label);
         setFrameError(null);
+        setRefused(null);
+        setRecovery(null);
         // The frame is clamped because a shared link may name one this stream
         // does not have. The selection is left alone: clearing it here would
         // throw away the block a shared link asked for, since opening the
@@ -62,11 +75,31 @@ export function App() {
         setInfo(null);
         setFrame(null);
         setReport(null);
+        setRecovery(null);
+        // Kept rather than discarded. A stream the strict path refuses is the
+        // only stream on which the recovery rules have anything to say.
+        setRefused(bytes);
         setFrameError(error instanceof Error ? error.message : String(error));
       }
     },
     [],
   );
+
+  /// Walks the refused stream to its end and shows what the rules did.
+  const onWalkAnyway = useCallback(() => {
+    if (!decoder || !refused) return;
+    try {
+      const opened = decoder.openTolerant(refused);
+      setInfo(opened);
+      setRecovery(decoder.recovery());
+      setSource("damaged stream, walked");
+      setFrameError(null);
+      setRefused(null);
+      setView((current) => ({ ...current, frame: 0, selection: null }));
+    } catch (error) {
+      setFrameError(error instanceof Error ? error.message : String(error));
+    }
+  }, [decoder, refused]);
 
   useEffect(() => {
     let cancelled = false;
@@ -101,14 +134,19 @@ export function App() {
     const index = Math.min(Math.max(view.frame, 0), info.frameCount - 1);
     try {
       setFrame(decoder.decodeFrame(index));
-      setReport(parseReport(decoder.probeFrame(index)));
+      // A walked stream is a timeline indexed by packet; the syntax report is
+      // indexed by the frame index a packet declares, and on a damaged stream
+      // those are different numbers. The module refuses to answer, correctly,
+      // so the page does not ask — and says why on the page rather than
+      // leaving the overlays mysteriously empty.
+      setReport(recovery ? null : parseReport(decoder.probeFrame(index)));
       setFrameError(null);
     } catch (error) {
       setFrame(null);
       setReport(null);
       setFrameError(error instanceof Error ? error.message : String(error));
     }
-  }, [decoder, info, view.frame]);
+  }, [decoder, info, view.frame, recovery]);
 
   useEffect(() => writeView(view), [view]);
 
@@ -298,7 +336,19 @@ export function App() {
       {frameError && view.tab === "projection" ? (
         <p className="error" role="alert">
           {frameError}
+          {refused ? (
+            <>
+              {" "}
+              <button type="button" className="inline" onClick={onWalkAnyway}>
+                Walk it anyway and show what the rules do
+              </button>
+            </>
+          ) : null}
         </p>
+      ) : null}
+
+      {recovery && view.tab === "projection" ? (
+        <RecoveryStrip outcomes={recovery} view={view} setView={setView} />
       ) : null}
 
       {view.tab === "projection" ? <Scrubber info={info} view={view} setView={setView} /> : null}
@@ -509,6 +559,61 @@ function Scrubber({
           }
         />
       </label>
+    </section>
+  );
+}
+
+/// What the corruption rules made of each packet, one cell per packet.
+///
+/// This is the part of the format that is specified most carefully and watched
+/// least: thirteen named traps drive it in both decoders, and until now none of
+/// that was visible to anyone reading the page. A cell is a packet, its colour
+/// is its outcome, and clicking it scrubs to the picture that packet produced —
+/// which for a lost one is the last image that decoded, held, because that is
+/// what the document says a decoder shows.
+function RecoveryStrip({
+  outcomes,
+  view,
+  setView,
+}: {
+  outcomes: PacketOutcome[];
+  view: ViewState;
+  setView: React.Dispatch<React.SetStateAction<ViewState>>;
+}) {
+  const shown = outcomes.filter((outcome) => outcome === "shown").length;
+  const lost = outcomes.length - shown;
+  return (
+    <section className="recovery">
+      <h2>What the rules did</h2>
+      <p className="lede">
+        This stream did not decode cleanly, so it was walked to its end instead of
+        abandoned at the first fault. {outcomes.length} packet(s): {shown} decoded,{" "}
+        {lost} did not. A packet that produced no image holds the last one that did — for
+        display only. Nothing here is reconstructed from damaged bytes, and nothing damaged
+        reached a later frame.
+      </p>
+      <ol className="packets">
+        {outcomes.map((outcome, position) => (
+          <li key={position}>
+            <button
+              type="button"
+              className={`packet ${outcome.split(" ")[0]}`}
+              aria-current={view.frame === position ? "true" : undefined}
+              title={`packet ${position}: ${outcome}`}
+              onClick={() => setView((current) => ({ ...current, frame: position }))}
+            >
+              <span className="visually-hidden">
+                packet {position}: {outcome}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ol>
+      <p className="quiet">
+        Syntax overlays are off for a walked stream: the timeline is indexed by packet and
+        the syntax report by the frame index a packet declares, and on a damaged stream
+        those are different numbers. Reopen it strictly to inspect syntax.
+      </p>
     </section>
   );
 }
