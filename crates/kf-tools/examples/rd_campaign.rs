@@ -97,12 +97,12 @@ fn run(arguments: Vec<String>) -> Result<String, String> {
     }
     let keyframe = single(&arguments, "--keyframe")
         .as_deref()
-        .unwrap_or("120")
+        .unwrap_or(&declared_default("default_keyframe_interval"))
         .parse::<u16>()
         .map_err(|_| "--keyframe must be an integer".to_owned())?;
     let golden = single(&arguments, "--golden")
         .as_deref()
-        .unwrap_or("16")
+        .unwrap_or(&declared_default("default_golden_interval"))
         .parse::<u8>()
         .map_err(|_| "--golden must be an integer below 256".to_owned())?;
 
@@ -561,6 +561,24 @@ fn measure_rate_control(clip: &Clip, keyframe: u16, golden: u8) -> Result<Json, 
         ("anchor_qp", number(32.0)),
         ("targets", Json::Array(entries)),
     ]))
+}
+
+/// A declared default from the frozen constants.
+///
+/// The tools carried `120` and `16` in their argument parsing, which is the
+/// specification's own defaults written a third and fourth time. A campaign
+/// receipt records the intervals it used, so the settings a reader compares
+/// against the document agreed with it only because the same numbers were typed
+/// in four places.
+fn declared_default(key: &str) -> String {
+    kf_spec::V1_ASSETS
+        .iter()
+        .find(|asset| asset.name == "constants.toml")
+        .expect("the specification exposes constants.toml")
+        .contents
+        .lines()
+        .find_map(|line| Some(line.strip_prefix(&format!("{key} = "))?.trim().to_owned()))
+        .unwrap_or_else(|| panic!("constants.toml declares no {key}"))
 }
 
 fn single(arguments: &[String], flag: &str) -> Option<String> {

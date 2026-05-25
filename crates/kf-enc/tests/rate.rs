@@ -178,3 +178,35 @@ fn a_biased_controller_is_still_deterministic() {
     };
     assert_eq!(run(), run());
 }
+
+/// Reads a declared scalar out of the frozen constants.
+fn declared(name: &str) -> u8 {
+    kf_spec::V1_ASSETS
+        .iter()
+        .find(|asset| asset.name == "constants.toml")
+        .expect("the specification exposes constants.toml")
+        .contents
+        .lines()
+        .find_map(|line| {
+            line.strip_prefix(&format!("{name} = "))?
+                .trim()
+                .parse()
+                .ok()
+        })
+        .unwrap_or_else(|| panic!("constants.toml declares no {name}"))
+}
+
+#[test]
+fn the_encoder_accepts_exactly_the_declared_quantizer_range() {
+    // The encoder validated `qp > 63` in two places. A narrowed declaration
+    // would have left it emitting streams both decoders refuse.
+    let (min, max) = (declared("qp_min"), declared("qp_max"));
+    let sequence =
+        kf_bitstream::SequenceHeader::new(64, 64, 24, 1, 120, 16).expect("a legal sequence");
+
+    assert!(kf_enc::Encoder::new(sequence, min).is_ok());
+    assert!(kf_enc::Encoder::new(sequence, max).is_ok());
+    assert!(kf_enc::Encoder::new(sequence, max + 1).is_err());
+    assert!(kf_enc::RateControl::constant_qp(max).is_ok());
+    assert!(kf_enc::RateControl::constant_qp(max + 1).is_err());
+}

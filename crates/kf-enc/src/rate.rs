@@ -2,7 +2,7 @@ use std::sync::OnceLock;
 
 use kf_spec::V1_ASSETS;
 
-use crate::EncodeError;
+use crate::{EncodeError, declared_qp_max};
 
 const Q16: i64 = 1 << 16;
 
@@ -26,7 +26,11 @@ pub enum RateControl {
 impl RateControl {
     /// Accepts QP in `0..=63`.
     pub fn constant_qp(qp: u8) -> Result<Self, EncodeError> {
-        if qp > 63 {
+        // The declared ceiling, not a copy of it. An encoder that accepted a
+        // quantizer the format does not carry would produce a stream both
+        // decoders refuse, and the first sign of it would be a refusal rather
+        // than a message about a quantizer.
+        if qp > declared_qp_max() {
             return Err(EncodeError::InvalidInput {
                 element: "frame.qp",
             });

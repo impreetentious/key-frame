@@ -10,6 +10,13 @@ fullpel_search_min = -64
 fullpel_search_max = 64
 filter_taps = [1, -5, 20, 20, -5, 1]
 filter_denominator = 32
+# Version one always applies the filter twice — horizontally, then vertically —
+# so no decoder performs a single stage. These name the per-stage scale the
+# two-stage constants below are derived from, and `spec/check_assets.py` holds
+# the chain together: the filter denominator is two to the single-stage shift,
+# each rounding bias is half its stage's scale, and the two-stage shift is two
+# single stages. They are here to make that arithmetic legible, not to describe
+# an operation the format has.
 single_stage_rounding = 16
 single_stage_shift = 5
 two_stage_rounding = 512

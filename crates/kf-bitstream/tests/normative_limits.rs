@@ -192,3 +192,38 @@ fn packet_is_accepted(qp: u8, payload: Vec<u8>) -> bool {
     )
     .is_ok()
 }
+
+#[test]
+fn the_motion_vector_difference_bound_is_the_declared_range() {
+    // Derived rather than declared: two vectors inside the full-pixel range can
+    // differ by its whole width, coded at the declared fractional precision.
+    // The syntax layer carried the arithmetic's answer as a literal, so the
+    // three declarations it comes from governed nothing that codes a vector.
+    use kf_bitstream::{FrameType, MotionVector, Prediction, ReferenceFrame, SyntaxWriter};
+    use kf_range::ContextBank;
+
+    let span = constant("mv_fullpel_max") - constant("mv_fullpel_min");
+    let fractional = u32::try_from(constant("mv_fractional_bits")).expect("a bit count");
+    let bound = i16::try_from(span << fractional).expect("the declared bound fits a vector field");
+
+    let write = |x_q4: i16| {
+        SyntaxWriter::new(ContextBank::initial()).write_prediction(
+            FrameType::P,
+            Prediction::Inter {
+                reference: ReferenceFrame::Last,
+                mvd: MotionVector { x_q4, y_q4: 0 },
+            },
+        )
+    };
+
+    assert!(write(bound).is_ok(), "the declared bound was refused");
+    assert!(write(-bound).is_ok(), "the declared bound was refused");
+    assert!(
+        write(bound + 1).is_err(),
+        "a difference past the bound was written"
+    );
+    assert!(
+        write(-bound - 1).is_err(),
+        "a difference past the bound was written"
+    );
+}

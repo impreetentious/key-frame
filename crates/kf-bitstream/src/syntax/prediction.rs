@@ -1,9 +1,46 @@
+use std::sync::OnceLock;
+
+use kf_spec::V1_ASSETS;
+
 use crate::{
     BitstreamError, FrameType, IntraMode, MotionVector, Prediction, ReferenceFrame, SyntaxElement,
     SyntaxReader, SyntaxWriter,
 };
 
-const MAX_MVD_MAGNITUDE: u32 = 512;
+/// The largest motion-vector difference the syntax admits, in quarter pels.
+///
+/// Derived, not written. Two vectors inside the declared full-pixel range can
+/// differ by the whole width of that range, and the difference is coded at the
+/// declared fractional precision — so the bound is
+/// `(mv_fullpel_max - mv_fullpel_min) << mv_fractional_bits`. It was `512` here,
+/// which is that arithmetic done once by hand: the three declarations it comes
+/// from were reconciled against `mc.toml` and read by nothing that codes a
+/// vector, so widening the declared range would have left this coder rejecting
+/// differences the specification allows, with no vector anywhere near the bound
+/// to notice.
+fn max_mvd_magnitude() -> u32 {
+    static MAX: OnceLock<u32> = OnceLock::new();
+    *MAX.get_or_init(|| {
+        let span = declared("mv_fullpel_max") - declared("mv_fullpel_min");
+        let fractional = u32::try_from(declared("mv_fractional_bits"))
+            .expect("invariant: a fractional-bit count is not negative");
+        u32::try_from(span).expect("invariant: the declared range is not negative") << fractional
+    })
+}
+
+/// One declared scalar from the frozen constants.
+fn declared(key: &str) -> i64 {
+    let asset = V1_ASSETS
+        .iter()
+        .find(|asset| asset.name == "constants.toml")
+        .expect("invariant: kf-spec exposes constants.toml");
+    let prefix = format!("{key} = ");
+    asset
+        .contents
+        .lines()
+        .find_map(|line| line.strip_prefix(&prefix)?.trim().parse().ok())
+        .unwrap_or_else(|| panic!("invariant: checked constants declare {key}"))
+}
 
 impl SyntaxWriter {
     /// Writes the complete frame-legal prediction-kind branch for one block.
@@ -64,7 +101,7 @@ impl SyntaxWriter {
         context_base: u16,
     ) -> Result<(), BitstreamError> {
         let magnitude = u32::from(value.unsigned_abs());
-        if magnitude > MAX_MVD_MAGNITUDE {
+        if magnitude > max_mvd_magnitude() {
             return Err(invalid("prediction.mvd_magnitude"));
         }
         let code_number = magnitude + 1;
@@ -160,7 +197,7 @@ impl SyntaxReader<'_> {
             code_number |= u32::from(self.bypass()?) << shift;
         }
         let magnitude = code_number - 1;
-        if magnitude > MAX_MVD_MAGNITUDE {
+        if magnitude > max_mvd_magnitude() {
             return Err(invalid("prediction.mvd_magnitude"));
         }
         if magnitude == 0 {

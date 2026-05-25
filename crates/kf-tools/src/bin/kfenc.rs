@@ -56,11 +56,11 @@ fn run(arguments: Vec<String>) -> Result<(), String> {
         return Err("--qp and --bitrate are mutually exclusive".to_owned());
     }
     let keyframe_interval = optional_value(&arguments, "--kf-interval")
-        .unwrap_or("120")
+        .unwrap_or(&declared_default("default_keyframe_interval"))
         .parse::<u16>()
         .map_err(|_| "--kf-interval must be a nonzero u16".to_owned())?;
     let golden_interval = optional_value(&arguments, "--golden-interval")
-        .unwrap_or("16")
+        .unwrap_or(&declared_default("default_golden_interval"))
         .parse::<u8>()
         .map_err(|_| "--golden-interval must be a nonzero u8".to_owned())?;
     reject_unknown(&arguments)?;
@@ -279,6 +279,24 @@ fn receipt(receipt: &Receipt<'_>) -> Json {
         ),
         ("frames", Json::Array(frames)),
     ])
+}
+
+/// A declared default from the frozen constants.
+///
+/// The tools carried `120` and `16` in their argument parsing, which is the
+/// specification's own defaults written a third and fourth time. A campaign
+/// receipt records the intervals it used, so the settings a reader compares
+/// against the document agreed with it only because the same numbers were typed
+/// in four places.
+fn declared_default(key: &str) -> String {
+    kf_spec::V1_ASSETS
+        .iter()
+        .find(|asset| asset.name == "constants.toml")
+        .expect("the specification exposes constants.toml")
+        .contents
+        .lines()
+        .find_map(|line| Some(line.strip_prefix(&format!("{key} = "))?.trim().to_owned()))
+        .unwrap_or_else(|| panic!("constants.toml declares no {key}"))
 }
 
 fn value<'a>(arguments: &'a [String], flag: &str) -> Result<&'a str, String> {

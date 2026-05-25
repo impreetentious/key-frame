@@ -15,7 +15,9 @@ use kf_transform::{
 };
 
 use crate::motion_search::estimate_motion;
-use crate::{EncodeError, FrameDecision, GopPlanner, RateControl, RateController, Toolset};
+use crate::{
+    EncodeError, FrameDecision, GopPlanner, RateControl, RateController, Toolset, declared_qp_max,
+};
 
 /// The intra modes the search tries, in the order the asset declares.
 ///
@@ -265,7 +267,11 @@ pub struct IntraEncoder {
 
 impl IntraEncoder {
     pub fn new(sequence: SequenceHeader, qp: u8) -> Result<Self, EncodeError> {
-        if qp > 63 {
+        // The declared ceiling, not a copy of it. An encoder that accepted a
+        // quantizer the format does not carry would produce a stream both
+        // decoders refuse, and the first sign of it would be a refusal rather
+        // than a message about a quantizer.
+        if qp > declared_qp_max() {
             return Err(EncodeError::InvalidInput {
                 element: "frame.qp",
             });
