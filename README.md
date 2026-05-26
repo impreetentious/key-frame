@@ -83,8 +83,8 @@ specification. Every gate in the repository exists to prove the two agree.
   measured and the verifier rechecks. The ablations narrow what the encoder will
   choose and never what the bitstream means, so every measured stream is an
   ordinary file both decoders reconstruct bit-exactly.
-- Verifies itself with one command that runs every gate continuous integration
-  runs, in the same order.
+- Verifies itself with one command that runs every gate its pipeline defines,
+  in the same order.
 
 ## What it is not
 
@@ -152,7 +152,7 @@ Node.js for repository checks
   independent standard-library oracle that authors test vectors without the
   Rust implementation.
 - [`conformance/`](conformance/) holds committed streams with their decoded
-  hashes, reproduced on both native targets in continuous integration.
+  hashes, reproduced byte-for-byte by every run of `./scripts/preflight.sh`.
 - [`corpus/`](corpus/) pins the source clips used for measurement and for the
   bit-exactness proof on natural video; the clips themselves are fetched by
   checksum, never redistributed, and every field the manifest pins — address,
@@ -211,26 +211,30 @@ Build the projection room and open `inspector/dist` with any static server:
 
 ## Verify
 
-One command runs every gate, in the order continuous integration runs them:
+One command runs every gate, in the order the pipeline definition runs them:
 
 ```sh
 ./scripts/preflight.sh
 ```
 
-It checks version, documentation, claim, declared-scalar, license, and
-specification coherence, then the range-coder, transform, bitstream, syntax,
-reference-decoder, probe, intra, conformance, inter, entropy, deblock,
-natural-corpus, rate-control, quality-metric, decoder-campaign, error-matrix,
-conformance-coverage, random-access seek, native-to-WebAssembly equality, and
+It checks version, documentation, claim, interface, declared-scalar, license,
+and specification coherence and the dependency closure, then the range-coder,
+transform, bitstream, syntax, reference-decoder, probe, intra,
+native-conformance, inter-codec, entropy, deblock, natural-corpus, rate-control,
+quality-metric, rate-distortion, decoder-campaign, error-matrix,
+conformance-coverage, random-access-seek, WebAssembly-equality, and
 projection-room gates, then formatting, lints, the forbidden-API and
 decoder-boundary scan, the full test suite, and the documentation build.
 
 ## Build and deploy
 
 The workspace builds as Rust libraries and command-line binaries with `cargo
-build --workspace`. Continuous integration additionally reproduces every
-committed conformance stream and decoded hash on both supported native targets
-and requires them to be byte-identical.
+build --workspace`. Every committed conformance stream and decoded hash is
+reproduced and required to be byte-identical by `./scripts/preflight.sh`, on
+whichever supported native target runs it. The two-target matrix that would run
+both on every change is configured and has never executed; `docs/LIMITATIONS.md`
+says why, and [`docs/adr/0018`](docs/adr/0018-preflight-is-the-arbiter.md)
+records the decision.
 
 ## Status and contributing
 
@@ -247,4 +251,4 @@ preflight green.
 
 ---
 
-**Version:** v0.13.21
+**Version:** v0.13.22

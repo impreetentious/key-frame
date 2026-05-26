@@ -138,8 +138,14 @@ regenerates the number.
 
 The campaign receipt records, for every point, the coded size, the stream's
 hash, and both metrics. `rd_verify` re-encodes each point and compares every
-field. It runs on every change for the ends of each quality ladder, and nightly
-for all sixty points.
+field. `scripts/ci/rd-gate.sh` runs it on every change for the ends of each
+quality ladder, because a gate slow enough to skip is a gate that gets skipped.
+All sixty points are the nightly job's, which is a workflow this repository has
+never had a runner for — `docs/LIMITATIONS.md` says so under continuous
+integration. That is a gap in scheduling rather than in the check: running
+`rd_verify --receipts bench/results/rd-campaign.json` yourself re-derives all
+sixty points and the six average-bitrate targets, and every figure on this page
+came back exact when it was last run that way.
 
 The whole thing is enforced by a rule that sounds obvious and is not: **quality
 is measured against the decoded stream, never against the encoder's own

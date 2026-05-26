@@ -4,6 +4,62 @@ use kf_bitstream::{
     SEQUENCE_HEADER_SIZE, SequenceHeader, SyntaxReader, SyntaxWriter, TransformBlockSize,
 };
 use kf_range::ContextBank;
+use kf_spec::V1_ASSETS;
+
+/// The declared stream facts every probe report restates in its header.
+///
+/// These were four literals inside one `format!` string — the bitstream
+/// version, the chroma siting, the sample depth, and the superblock side —
+/// beside four declarations in `constants.toml` that nothing compared them
+/// with. The frozen schema in `spec/v1/probe.schema.json` froze the same four
+/// as literals of its own, so a report was validated against a second copy of
+/// the same guess rather than against the specification.
+struct DeclaredStream {
+    bitstream_version: u32,
+    chroma: &'static str,
+    depth: u32,
+    superblock_size: u32,
+}
+
+fn stream_facts() -> &'static DeclaredStream {
+    use std::sync::OnceLock;
+    static FACTS: OnceLock<DeclaredStream> = OnceLock::new();
+    FACTS.get_or_init(|| DeclaredStream {
+        bitstream_version: declared_number("bitstream_version"),
+        // The Y4M token carries the format's leading `C`; a probe report names
+        // the siting without it, and `spec/check_assets.py` holds the two
+        // spellings together.
+        chroma: declared_text("chroma_name")
+            .strip_prefix('C')
+            .expect("invariant: checked chroma_name is a Y4M C-prefixed token"),
+        depth: declared_number("bit_depth"),
+        superblock_size: declared_number("superblock_size"),
+    })
+}
+
+fn declared_line(key: &str) -> &'static str {
+    let asset = V1_ASSETS
+        .iter()
+        .find(|asset| asset.name == "constants.toml")
+        .expect("invariant: kf-spec exposes constants.toml");
+    let prefix = format!("{key} = ");
+    asset
+        .contents
+        .lines()
+        .find_map(|line| line.strip_prefix(&prefix))
+        .unwrap_or_else(|| panic!("invariant: checked constants declare {key}"))
+        .trim()
+}
+
+fn declared_number(key: &str) -> u32 {
+    declared_line(key)
+        .parse()
+        .unwrap_or_else(|_| panic!("invariant: checked constants declare {key} as a count"))
+}
+
+fn declared_text(key: &str) -> &'static str {
+    declared_line(key).trim_matches('"')
+}
 
 /// Canonical replay accounting for one coding block.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -66,9 +122,10 @@ impl ProbeReport {
                     .collect::<Vec<_>>()
                     .join(",");
                 format!(
-                    "{{\"pos\":[{},{}],\"size\":64,\"structure_modeled_entropy_q16\":{},\"structure_emitted_payload_bytes\":{},\"cbs\":[{}]}}",
+                    "{{\"pos\":[{},{}],\"size\":{},\"structure_modeled_entropy_q16\":{},\"structure_emitted_payload_bytes\":{},\"cbs\":[{}]}}",
                     superblock.x,
                     superblock.y,
+                    stream_facts().superblock_size,
                     superblock.structure_modeled_entropy_q16,
                     superblock.structure_emitted_payload_bytes,
                     blocks,
@@ -77,9 +134,12 @@ impl ProbeReport {
             .collect::<Vec<_>>()
             .join(",");
         format!(
-            "{{\"probe_version\":1,\"stream\":{{\"bitstream_version\":1,\"width\":{},\"height\":{},\"chroma\":\"420jpeg\",\"depth\":8}},\"frame\":{{\"frame_index\":{},\"flags\":{{\"key\":{},\"golden_refresh\":{},\"show\":{}}},\"qp\":{},\"input_payload_len\":{},\"canonical_replay_payload_len\":{},\"canonical_payload_match\":{},\"first_mismatch_offset\":{},\"frame_flush_bytes\":{},\"superblocks\":[{}]}}}}",
+            "{{\"probe_version\":1,\"stream\":{{\"bitstream_version\":{},\"width\":{},\"height\":{},\"chroma\":\"{}\",\"depth\":{}}},\"frame\":{{\"frame_index\":{},\"flags\":{{\"key\":{},\"golden_refresh\":{},\"show\":{}}},\"qp\":{},\"input_payload_len\":{},\"canonical_replay_payload_len\":{},\"canonical_payload_match\":{},\"first_mismatch_offset\":{},\"frame_flush_bytes\":{},\"superblocks\":[{}]}}}}",
+            stream_facts().bitstream_version,
             self.width,
             self.height,
+            stream_facts().chroma,
+            stream_facts().depth,
             self.frame_index,
             self.key,
             self.golden_refresh,

@@ -397,6 +397,13 @@ def main():
         errors.append("intra.toml angular_rounding_offset is not half of the angular scale")
     if scalar_int(intra, "unavailable_fallback") != 128:
         errors.append("intra.toml unavailable_fallback is not the mid-grey 8-bit substitute")
+    # The neighbour rule states the same substitute a second time, inside a
+    # name. Both decoders read the scalar, so the string governs nothing and
+    # would simply have gone on describing the old value.
+    if scalar_text(intra, "substitution") != "nearest_available_else_%d" % scalar_int(
+        intra, "unavailable_fallback"
+    ):
+        errors.append("intra.toml substitution does not name the declared unavailable fallback")
     if scalar_int(intra, "d45") != angular_denominator:
         errors.append("intra.toml d45 must advance one reference sample per row")
     if scalar_int(intra, "d135") != -angular_denominator:
@@ -432,6 +439,29 @@ def main():
         errors.append("mc.toml chroma_phase_denominator disagrees with the enumerated chroma phases")
     if len(array(mc, "filter_taps")) != 6 or sum(array(mc, "filter_taps")) != filter_denominator:
         errors.append("mc.toml filter_taps must be six taps summing to the filter denominator")
+
+    # Prose declarations that carry a number another declaration states.
+    #
+    # `scripts/ci/declared-scalar-use.sh` scans numeric declarations and says
+    # plainly that it does not scan prose, because most prose declarations name
+    # an order or a measure that a reader checks by reading. A few of them do
+    # not: they spell out, in a word or a formula, a value the assets declare
+    # somewhere else. Those are the same "one fact, two spellings" defect as the
+    # loop filter's minimum edge written as the English word "eight", and they
+    # are worth reconciling rather than counting.
+    #
+    # This narrows the prose gap; it does not close it. The rest stay outside,
+    # and the gate keeps printing how many.
+    ordinals = {2: "half", 4: "quarter", 8: "eighth"}
+    luma_denominator = scalar_int(mc, "phase_denominator")
+    expected_precision = ordinals.get(luma_denominator)
+    if expected_precision is None:
+        errors.append("mc.toml phase_denominator has no ordinal name for the precision to use")
+    else:
+        if scalar_text(mc, "precision") != "%s_pel" % expected_precision:
+            errors.append("mc.toml precision does not name the declared phase denominator")
+        if scalar_text(mc, "motion_vector_units") != "%s_luma_pixel" % expected_precision:
+            errors.append("mc.toml motion_vector_units does not name the declared phase denominator")
 
     for size in (4, 8, 16, 32):
         if array(V1 / "transforms.toml", "n%d" % size) != expected_matrix(size):
@@ -489,6 +519,12 @@ def main():
         errors.append("quant.toml first_qp differs from 63-2*i")
     if scalar_int(V1 / "quant.toml", "fractional_bits") != 16:
         errors.append("quant.toml fractional_bits must be 16")
+    # The bucket update is declared as a formula, and the shift inside it is the
+    # fractional width declared on the line above.
+    fill_update = scalar_text(V1 / "quant.toml", "fill_update")
+    fill_shift = re.search(r"<<\s*(\d+)", fill_update)
+    if not fill_shift or int(fill_shift.group(1)) != scalar_int(V1 / "quant.toml", "fractional_bits"):
+        errors.append("quant.toml fill_update shifts by something other than the declared width")
     if scalar_int(V1 / "quant.toml", "window_frames") != 8:
         errors.append("quant.toml window_frames must be 8")
     if scalar_int(V1 / "quant.toml", "bucket_multiple") != 2:
@@ -741,9 +777,123 @@ def main():
     vectors = json.loads((V1 / "vectors.json").read_text(encoding="utf-8"))
     if vectors.get("format") != "key-frame-oracle-v1":
         errors.append("vectors.json has the wrong format id")
-    probe_schema = json.loads((V1 / "probe.schema.json").read_text(encoding="utf-8"))
-    if probe_schema.get("properties", {}).get("probe_version", {}).get("const") != 1:
+    # The frozen probe schema is a specification asset that restates other
+    # specification assets, and only its own version number was ever compared
+    # to anything. It froze the picture bounds, the quantizer range, the
+    # payload bounds, the superblock side, the coding-block sizes, the sample
+    # format, the intra mode names, the reference names, and the context id
+    # ceiling — every one of them a literal beside a declaration nothing
+    # reconciled it with. Raising `max_width` would have left the schema
+    # rejecting a valid report from a valid stream, and `probe-gate.sh`, whose
+    # whole job is to validate reports against this schema, would have been the
+    # thing that failed while the schema was the thing that was wrong.
+    probe_path = V1 / "probe.schema.json"
+    probe_schema = json.loads(probe_path.read_text(encoding="utf-8"))
+
+    def schema_at(*path):
+        """One node of the frozen schema, by the path the document gives it."""
+        node = probe_schema
+        for step in path:
+            if isinstance(step, int):
+                node = node[step]
+            else:
+                node = node.get(step, {})
+        return node
+
+    stream = ("properties", "stream", "properties")
+    frame = ("properties", "frame", "properties")
+    superblock = frame + ("superblocks", "items", "properties")
+    block = superblock + ("cbs", "items", "properties")
+    prediction = block + ("prediction", "oneOf")
+
+    # `probe_version` is the schema's own contract and nothing else declares
+    # it, so it stays a literal here: this is the place that freezes it.
+    if schema_at(*("properties", "probe_version"), "const") != 1:
         errors.append("probe.schema.json does not freeze probe_version 1")
+
+    schema_bounds = [
+        (stream + ("bitstream_version",), "const", scalar_int(constants, "bitstream_version")),
+        (stream + ("width",), "minimum", scalar_int(constants, "min_width")),
+        (stream + ("width",), "maximum", scalar_int(constants, "max_width")),
+        (stream + ("height",), "minimum", scalar_int(constants, "min_height")),
+        (stream + ("height",), "maximum", scalar_int(constants, "max_height")),
+        (stream + ("depth",), "const", scalar_int(constants, "bit_depth")),
+        (frame + ("qp",), "minimum", scalar_int(constants, "qp_min")),
+        (frame + ("qp",), "maximum", scalar_int(constants, "qp_max")),
+        (
+            frame + ("input_payload_len",),
+            "minimum",
+            scalar_int(constants, "decoder_initial_bytes"),
+        ),
+        (
+            frame + ("input_payload_len",),
+            "maximum",
+            scalar_int(constants, "max_payload_bytes"),
+        ),
+        (
+            frame + ("canonical_replay_payload_len",),
+            "minimum",
+            scalar_int(constants, "decoder_initial_bytes"),
+        ),
+        (superblock + ("size",), "const", scalar_int(constants, "superblock_size")),
+        (block + ("qp",), "minimum", scalar_int(constants, "qp_min")),
+        (block + ("qp",), "maximum", scalar_int(constants, "qp_max")),
+        (
+            block + ("syntax_trace", "items", "properties", "context_id", "oneOf", 0),
+            "maximum",
+            scalar_int(V1 / "contexts.toml", "count") - 1,
+        ),
+    ]
+    for path, keyword, declared_value in schema_bounds:
+        found = schema_at(*path).get(keyword)
+        if found != declared_value:
+            errors.append(
+                "probe.schema.json %s %s is %r; the specification declares %r"
+                % ("/".join(str(step) for step in path[-1:]), keyword, found, declared_value)
+            )
+
+    # The Y4M chroma token carries the format's leading `C`; the probe reports
+    # the siting without it. Deriving one from the other keeps the two
+    # spellings of one fact from parting.
+    declared_chroma = scalar_text(constants, "chroma_name")
+    if schema_at(*stream, "chroma").get("const") != declared_chroma.removeprefix("C"):
+        errors.append(
+            "probe.schema.json chroma const does not match constants.toml chroma_name"
+        )
+
+    schema_sets = [
+        (
+            block + ("size",),
+            "enum",
+            sorted(array(constants, "coding_block_sizes")),
+            "coding_block_sizes",
+        ),
+        (
+            prediction + (0, "properties", "mode"),
+            "enum",
+            array(V1 / "intra.toml", "modes"),
+            "intra.toml modes",
+        ),
+        (
+            prediction + (1, "properties", "reference"),
+            "enum",
+            array(V1 / "syntax.toml", "references"),
+            "syntax.toml references",
+        ),
+        (
+            prediction + (2, "properties", "reference"),
+            "enum",
+            array(V1 / "syntax.toml", "references"),
+            "syntax.toml references",
+        ),
+    ]
+    for path, keyword, declared_value, source in schema_sets:
+        found = schema_at(*path).get(keyword)
+        if found != declared_value:
+            errors.append(
+                "probe.schema.json %s does not match %s: %r against %r"
+                % (keyword, source, found, declared_value)
+            )
     oracle = subprocess.run(
         [sys.executable, str(ROOT / "oracle.py"), "--check"],
         cwd=str(ROOT.parent),
@@ -759,7 +909,14 @@ def main():
         for error in errors:
             print(" - %s" % error, file=sys.stderr)
         return 1
-    print("spec-assets: OK — 144 contexts, four transforms/scans, 4095 probability rows")
+    print(
+        "spec-assets: OK — %d contexts, %d transforms/scans, %d probability rows"
+        % (
+            scalar_int(V1 / "contexts.toml", "count"),
+            len(array(V1 / "constants.toml", "transform_sizes")),
+            scalar_int(V1 / "costs.toml", "probability_max"),
+        )
+    )
     return 0
 
 

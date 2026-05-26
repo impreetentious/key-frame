@@ -173,7 +173,16 @@ fn angular(output: &mut [u8], top: &[u8], left: &[u8], side: usize, angle: i32) 
                     left[usize::try_from(-position - 1).unwrap().min(left.len() - 1)]
                 }
             };
-            let value = (32 - fraction) * u32::from(sample(index))
+            // The complement is against the declared scale, not against a
+            // literal that happens to equal it today. This line read the
+            // declaration twice above and wrote `32` here, so raising the
+            // angular scale would have moved the production predictor and left
+            // this one blending at the old one — a divergence the reference
+            // gate would report as an unexplained mismatch rather than as the
+            // stale constant it is.
+            let scale = u32::try_from(intra().denominator)
+                .expect("invariant: checked angular denominator is positive");
+            let value = (scale - fraction) * u32::from(sample(index))
                 + fraction * u32::from(sample(index + 1));
             output[row * side + column] =
                 u8::try_from((value + intra().rounding) >> intra().shift).unwrap();

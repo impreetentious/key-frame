@@ -9,6 +9,7 @@ publish = false
 [dependencies]
 kf-bitstream = { path = "../kf-bitstream" }
 kf-range = { path = "../kf-range" }
+kf-spec = { path = "../kf-spec" }
 
 [dev-dependencies]
 kf-enc = { path = "../kf-enc" }

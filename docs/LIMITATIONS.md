@@ -186,10 +186,29 @@ would decode identically here.
 
 ## Platforms
 
-**Linux x86_64 and macOS arm64 are the supported native targets.** Both are
-reproduced in continuous integration and required to be byte-identical.
-Windows is not supported and is not tested. The WebAssembly module targets
-`wasm32-unknown-unknown` and imports nothing.
+**Linux x86_64 and macOS arm64 are the supported native targets.** The
+conformance suite is reproduced, and required to be byte-identical, on whichever
+of them runs `./scripts/preflight.sh`. The two-target matrix that would run both
+against each other on every change is configured and has never executed; see the
+next section. Windows is not supported and is not tested. The WebAssembly module
+targets `wasm32-unknown-unknown` and imports nothing.
+
+## Continuous integration
+
+**No hosted pipeline has ever run.** The repository ships three GitHub Actions
+workflows — the full gate list plus the two-target bit-exactness matrix, a
+nightly decoder campaign and sixty-point receipt recheck, and the projection-room
+deploy — and its only remote is a GitLab project, where GitHub Actions do not
+run. The definitions are correct and reviewed; nothing has executed them.
+
+What follows from that is stated rather than worked around. Every claim in this
+repository names a check `./scripts/preflight.sh` runs, because that is the
+command a reader can run themselves. Three things the workflows would do are
+larger than preflight and are named here rather than counted as done: the second
+native target, the nightly campaign's full declared budget against preflight's
+smaller one, and all sixty rate–distortion points against the two ladder ends
+the change-time gate re-encodes. [ADR-0018](adr/0018-preflight-is-the-arbiter.md)
+records the decision and what was considered instead.
 
 ---
 

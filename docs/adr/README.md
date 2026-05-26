@@ -27,3 +27,4 @@ implementations.
 - [ADR-0015](0015-conformant-encoder-ablations.md) — Conformant Encoder Ablations
 - [ADR-0016](0016-complexity-term-in-rate-control.md) — Complexity Term in Rate Control
 - [ADR-0017](0017-checked-arithmetic-in-release.md) — Checked Arithmetic in Release Builds
+- [ADR-0018](0018-preflight-is-the-arbiter.md) — Preflight Is the Arbiter, Not a Hosted Pipeline

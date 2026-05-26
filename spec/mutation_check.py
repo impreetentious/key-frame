@@ -126,6 +126,14 @@ def drop_last_predictor_candidate(text):
     return text[:start] + ", ".join(entries[:-1]) + text[end:]
 
 
+def widen_probe_schema_picture(text):
+    """Raises the largest picture width the frozen probe schema accepts."""
+    document = json.loads(text)
+    width = document["properties"]["stream"]["properties"]["width"]
+    width["maximum"] = width["maximum"] * 2
+    return json.dumps(document, indent=2) + "\n"
+
+
 def flip_oracle_payload(text):
     """Changes one byte of one committed oracle vector."""
     document = json.loads(text)
@@ -173,6 +181,12 @@ CASES = [
     Case("mc.toml", "one motion-vector predictor candidate", drop_last_predictor_candidate, True),
     Case("mc-vectors.toml", "one expected interpolated sample", bump_first_case_expectation, True),
     Case("vectors.json", "one oracle packet payload byte", flip_oracle_payload, True),
+    Case(
+        "probe.schema.json",
+        "the largest picture the probe schema accepts",
+        widen_probe_schema_picture,
+        True,
+    ),
 ]
 
 
