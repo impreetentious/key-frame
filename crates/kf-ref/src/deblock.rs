@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 
 use kf_frame::{Frame, Plane};
+use std::sync::OnceLock;
+
 use kf_spec::V1_ASSETS;
 
 use crate::ReferenceError;
@@ -63,10 +65,33 @@ pub(crate) fn loop_filter_frame(
     Ok(())
 }
 
+/// The shortest edge the loop filter touches, in luma pixels.
+///
+/// Declared in `deblock.toml` and, until this read it, written as `8` in the
+/// luma edge collection, as `16` in the chroma derivation — twice the minimum,
+/// because a chroma edge is half its luma edge — and as `8` again after the
+/// halving. Four literals in this file, four more in the other decoder, and one
+/// more spelled as the English word "eight" in the generated document. Editing
+/// the declaration changed the specification and none of them.
+fn minimum_edge_px() -> u32 {
+    static MINIMUM: OnceLock<u32> = OnceLock::new();
+    *MINIMUM.get_or_init(|| {
+        let asset = V1_ASSETS
+            .iter()
+            .find(|asset| asset.name == "deblock.toml")
+            .expect("invariant: kf-spec exposes deblock.toml");
+        asset
+            .contents
+            .lines()
+            .find_map(|line| line.strip_prefix("minimum_edge_px = ")?.trim().parse().ok())
+            .expect("invariant: checked deblock asset declares minimum_edge_px")
+    })
+}
+
 fn gather_edges(blocks: &[RefCodedBlock], width: u32, height: u32) -> Vec<(EdgeKey, Edge)> {
     let mut edges = BTreeMap::new();
     for block in blocks {
-        if block.size < 8 {
+        if block.size < minimum_edge_px() {
             continue;
         }
         let right = block.x + block.size;
@@ -159,7 +184,9 @@ fn chroma_scale(edges: &[(EdgeKey, Edge)]) -> Vec<(EdgeKey, Edge)> {
     edges
         .iter()
         .filter(|(key, edge)| {
-            edge.length >= 16 && key.line.is_multiple_of(2) && key.start.is_multiple_of(2)
+            edge.length >= 2 * minimum_edge_px()
+                && key.line.is_multiple_of(2)
+                && key.start.is_multiple_of(2)
         })
         .map(|(key, edge)| {
             (
@@ -176,7 +203,7 @@ fn chroma_scale(edges: &[(EdgeKey, Edge)]) -> Vec<(EdgeKey, Edge)> {
                 },
             )
         })
-        .filter(|(_, edge)| edge.length >= 8)
+        .filter(|(_, edge)| edge.length >= minimum_edge_px())
         .collect()
 }
 

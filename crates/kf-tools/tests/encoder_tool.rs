@@ -12,12 +12,8 @@ use std::{fs, path::PathBuf, process::Command};
 use kf_dec::FastDecoder;
 use kf_tools::{Json, decode_y4m, psnr_y, sha256_hex};
 
-fn scratch(label: &str) -> PathBuf {
-    let directory =
-        std::env::temp_dir().join(format!("key-frame-kfenc-{label}-{}", std::process::id()));
-    fs::create_dir_all(&directory).expect("a scratch directory");
-    directory
-}
+mod common;
+use common::scratch;
 
 /// A deterministic clip, written as Y4M for the tool to read.
 fn source(directory: &std::path::Path) -> PathBuf {

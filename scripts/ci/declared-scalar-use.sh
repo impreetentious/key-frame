@@ -25,6 +25,17 @@
 #
 # There is no exemption list, and adding one would defeat the gate. A scalar
 # nobody can justify checking is a scalar the specification should not declare.
+#
+# The scope is numbers and tables, and that is a real limit rather than an
+# oversight. The assets also declare prose: `pass_order = "vertical_then_horizontal"`,
+# `search_distortion = "luma_sad"`, `accumulator = "i64"`. Those are statements a
+# reader checks by reading, and the vectors that replay the arithmetic they
+# describe are what actually holds them — requiring each string to be quoted
+# somewhere in the tree would buy a grep hit, not a check.
+#
+# The limit is counted rather than assumed. The line this prints names how many
+# prose declarations the scan did not look at, so the number is visible and a
+# sudden jump in it is something a reader can see.
 
 set -euo pipefail
 
@@ -164,4 +175,52 @@ if [[ -n "$restated" ]]; then
   exit 1
 fi
 
-echo "declared-scalar-use: OK — $count declared scalar(s) and table(s), every one reachable from something that runs"
+# The same question asked of the document the assets exist to produce.
+#
+# `docs/bitstream.md` is decoder-normative: it is the artifact a second
+# implementer works from. It is generated, which made it look safe, and it was
+# not. The generator typed most declared values into its prose as literals, so
+# editing a frozen asset moved both decoders and left the document stating the
+# old number — and every gate stayed green, because the generator re-rendered
+# the same stale sentence it rendered before. The reconstruction clamp, the
+# angular scale, the filter taps, the context count, the header offsets, and
+# the QP range were all like this. It is the same defect as the loop filter's
+# minimum edge length written out as the English word "eight", which is where
+# the class was first found, and the fix there was applied to one sentence.
+#
+# So the generator hands over its own template and no declared value may appear
+# in it as a bare number. A value that reaches the document has to arrive
+# through a placeholder, which means it arrives from the asset.
+#
+# Two limits, both real and neither an exemption. Fenced code blocks are
+# skipped: they carry the range coder's and CRC's own arithmetic, where 8, 24,
+# and 32 are the widths of a byte and of the u32 and u64 registers rather than
+# anything an asset declares, and every declared value inside those blocks is
+# already interpolated. And the scan starts at two digits, because the
+# document's ratios, symbol values, and array arithmetic are single digits and
+# collide with every small declaration. The count of single-digit declarations
+# the scan therefore skips is printed below.
+typed=""
+template="$(python3 spec/generate_docs.py --template \
+  | awk '/^```/ { fenced = !fenced; next } !fenced' \
+  | sed 's/{[a-z_0-9]*}/ /g')"
+while read -r name value; do
+  [[ -n "$name" ]] || continue
+  if printf '%s\n' "$template" | grep -qE "(^|[^0-9A-Za-z._-])${value}([^0-9A-Za-z._]|$)"; then
+    typed+="  $name ($value) is typed into the generated document"$'\n'
+  fi
+done < <(grep -hoE '^[a-z_0-9]+ = -?[0-9]{2,}$' spec/v1/*.toml | sed 's/ = / /' | sort -u)
+
+if [[ -n "$typed" ]]; then
+  echo "declared-scalar-use: the normative document states a declared value it did not read"
+  printf '%s' "$typed"
+  echo "  Interpolate it from the asset in spec/generate_docs.py. A document that"
+  echo "  restates a declaration is a document that can disagree with the codec while"
+  echo "  every gate passes, and it is the copy a second implementer builds from."
+  echo "declared-scalar-use: FAILED"
+  exit 1
+fi
+
+prose="$(grep -hoE '^[a-z_0-9]+ = "' spec/v1/*.toml | wc -l | tr -d ' ')"
+short="$(grep -hoE '^[a-z_0-9]+ = -?[0-9]$' spec/v1/*.toml | wc -l | tr -d ' ')"
+echo "declared-scalar-use: OK — $count declared scalar(s) and table(s), every one reachable from something that runs; the normative document types none of them; $prose prose declaration(s) and $short single-digit declaration(s) outside these scans"

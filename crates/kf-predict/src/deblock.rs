@@ -121,10 +121,33 @@ struct Edge {
     coded: bool,
 }
 
+/// The shortest edge the loop filter touches, in luma pixels.
+///
+/// Declared in `deblock.toml` and, until this read it, written as `8` in the
+/// luma edge collection, as `16` in the chroma derivation — twice the minimum,
+/// because a chroma edge is half its luma edge — and as `8` again after the
+/// halving. Four literals in this file, four more in the other decoder, and one
+/// more spelled as the English word "eight" in the generated document. Editing
+/// the declaration changed the specification and none of them.
+fn minimum_edge_px() -> u32 {
+    static MINIMUM: OnceLock<u32> = OnceLock::new();
+    *MINIMUM.get_or_init(|| {
+        let asset = V1_ASSETS
+            .iter()
+            .find(|asset| asset.name == "deblock.toml")
+            .expect("invariant: kf-spec exposes deblock.toml");
+        asset
+            .contents
+            .lines()
+            .find_map(|line| line.strip_prefix("minimum_edge_px = ")?.trim().parse().ok())
+            .expect("invariant: checked deblock asset declares minimum_edge_px")
+    })
+}
+
 fn collect_edges(blocks: &[CodedBlock], width: u32, height: u32) -> Vec<Edge> {
     let mut edges = Vec::new();
     for block in blocks {
-        if block.size < 8 {
+        if block.size < minimum_edge_px() {
             continue;
         }
         let right = block.x + block.size;
@@ -187,7 +210,9 @@ fn chroma_edges(edges: &[Edge]) -> Vec<Edge> {
     edges
         .iter()
         .filter(|edge| {
-            edge.length >= 16 && edge.line.is_multiple_of(2) && edge.start.is_multiple_of(2)
+            edge.length >= 2 * minimum_edge_px()
+                && edge.line.is_multiple_of(2)
+                && edge.start.is_multiple_of(2)
         })
         .map(|edge| Edge {
             vertical: edge.vertical,
@@ -198,7 +223,7 @@ fn chroma_edges(edges: &[Edge]) -> Vec<Edge> {
             intra: edge.intra,
             coded: edge.coded,
         })
-        .filter(|edge| edge.length >= 8)
+        .filter(|edge| edge.length >= minimum_edge_px())
         .collect()
 }
 
@@ -397,4 +422,47 @@ fn parse_decisions(contents: &str) -> Vec<(EdgeKind, bool, bool, u8)> {
         }
     }
     rows
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CodedBlock;
+
+    /// Which edges exist at all is a declared fact, not a literal.
+    ///
+    /// A block below the declared minimum contributes no edge, and one at the
+    /// minimum contributes two. The filter carried `8` in three places and the
+    /// reference decoder carried it in three more, so the two agreed with each
+    /// other rather than with `deblock.toml`, and no committed vector reaches
+    /// the boundary — the encoder never chooses a block that small.
+    #[test]
+    fn the_shortest_filtered_edge_is_the_declared_one() {
+        let minimum = super::minimum_edge_px();
+        let frame = minimum * 8;
+        let block = |size: u32| CodedBlock {
+            x: size,
+            y: size,
+            size,
+            intra: true,
+            coded: true,
+        };
+
+        let at_minimum = super::collect_edges(&[block(minimum)], frame, frame);
+        assert_eq!(
+            at_minimum.len(),
+            2,
+            "a block at the declared minimum contributed {} edge(s)",
+            at_minimum.len()
+        );
+
+        // Half the minimum is still a legal coding-block side in the format's
+        // own list only if the minimum moves, so this asks the narrower
+        // question: an edge shorter than the declaration is not collected.
+        let below = super::collect_edges(&[block(minimum / 2)], frame, frame);
+        assert!(
+            below.is_empty(),
+            "a block below the declared minimum contributed {} edge(s)",
+            below.len()
+        );
+    }
 }

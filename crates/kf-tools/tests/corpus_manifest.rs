@@ -23,6 +23,9 @@ use std::{fs, path::PathBuf, process::Command};
 
 use kf_tools::{PinnedClip, pinned_clips};
 
+mod common;
+use common::scratch;
+
 /// One record as the shell reader prints it.
 #[derive(Debug, Eq, PartialEq)]
 struct Record {
@@ -82,9 +85,7 @@ fn shell_records(manifest: &std::path::Path) -> Result<Vec<Record>, String> {
 
 /// Both readers over the same text, compared on the fields they share.
 fn agree(label: &str, manifest_text: &str) -> Vec<Record> {
-    let directory =
-        std::env::temp_dir().join(format!("key-frame-corpus-{label}-{}", std::process::id()));
-    fs::create_dir_all(&directory).expect("a scratch directory");
+    let directory = scratch(&format!("corpus-{label}"));
     let path = directory.join("manifest.toml");
     fs::write(&path, manifest_text).expect("the manifest is writable");
 
@@ -215,9 +216,7 @@ fn both_readers_refuse_a_manifest_with_no_clips() {
     // The one outcome worse than disagreeing is agreeing on nothing: a reader
     // that returned an empty list would let every consumer loop zero times and
     // report success.
-    let directory =
-        std::env::temp_dir().join(format!("key-frame-corpus-empty-{}", std::process::id()));
-    fs::create_dir_all(&directory).expect("a scratch directory");
+    let directory = scratch("corpus-empty");
     let path = directory.join("manifest.toml");
     let text = "format = \"key-frame-corpus-v1\"\n";
     fs::write(&path, text).expect("the manifest is writable");

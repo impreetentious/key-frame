@@ -3,13 +3,12 @@ use std::{fs, process::Command};
 use kf_frame::Frame;
 use kf_tools::{Y4mStream, decode_y4m, encode_y4m};
 
+mod common;
+use common::scratch;
+
 #[test]
 fn command_line_encode_decode_and_probe_round_trip() {
-    let test_dir = std::env::temp_dir().join(format!("key-frame-cli-{}", std::process::id()));
-    if test_dir.exists() {
-        fs::remove_dir_all(&test_dir).unwrap();
-    }
-    fs::create_dir(&test_dir).unwrap();
+    let test_dir = scratch("cli");
     let input = test_dir.join("input.y4m");
     let stream_path = test_dir.join("output.kfv");
     let decoded_path = test_dir.join("decoded.y4m");
@@ -76,11 +75,7 @@ fn command_line_encode_decode_and_probe_round_trip() {
 
 #[test]
 fn command_line_bitrate_and_qp_are_exclusive() {
-    let test_dir = std::env::temp_dir().join(format!("key-frame-cli-abr-{}", std::process::id()));
-    if test_dir.exists() {
-        fs::remove_dir_all(&test_dir).unwrap();
-    }
-    fs::create_dir(&test_dir).unwrap();
+    let test_dir = scratch("cli-abr");
     let input = test_dir.join("input.y4m");
     let stream_path = test_dir.join("output.kfv");
     let source = Y4mStream {

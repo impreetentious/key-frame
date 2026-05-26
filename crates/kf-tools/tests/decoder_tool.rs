@@ -14,12 +14,15 @@
 //! until it did, nothing in this repository implemented a sentence the
 //! specification states.
 
-use std::{fs, path::PathBuf, process::Command};
+use std::{fs, process::Command};
 
 use kf_bitstream::{FRAME_HEADER_SIZE, SEQUENCE_HEADER_SIZE, SequenceHeader};
 use kf_enc::Encoder;
 use kf_frame::Frame;
 use kf_tools::{Y4mStream, decode_y4m};
+
+mod common;
+use common::scratch;
 
 const WIDTH: u16 = 64;
 const HEIGHT: u16 = 64;
@@ -69,14 +72,6 @@ fn packet_offsets(bytes: &[u8]) -> Vec<usize> {
         offset += FRAME_HEADER_SIZE + payload_len;
     }
     offsets
-}
-
-/// A scratch directory of this test's own, so parallel tests cannot collide.
-fn scratch(label: &str) -> PathBuf {
-    let directory =
-        std::env::temp_dir().join(format!("key-frame-kfdec-{label}-{}", std::process::id()));
-    fs::create_dir_all(&directory).expect("a scratch directory");
-    directory
 }
 
 struct Run {

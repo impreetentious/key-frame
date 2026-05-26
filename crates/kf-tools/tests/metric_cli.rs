@@ -6,6 +6,9 @@ use std::{fs, process::Command};
 use kf_frame::Frame;
 use kf_tools::{Json, Y4mStream, encode_y4m};
 
+mod common;
+use common::scratch;
+
 fn write_clip(path: &std::path::Path, shift: i32) {
     let mut frames = Vec::new();
     for index in 0..3_u32 {
@@ -47,24 +50,9 @@ fn run(arguments: &[&str]) -> (bool, String, String) {
 /// The clock is not enough on its own. These tests run in parallel threads of
 /// one process, and two that read the clock inside the same tick get the same
 /// path — after which one of them deletes the other's files halfway through and
-/// the failure lands on whichever test was unlucky rather than on the bug. The
-/// counter is what actually makes the name unique; the clock only keeps two
-/// separate runs apart.
+/// the failure lands on whichever test was unlucky rather than on the bug.
 fn temp_dir() -> std::path::PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static NEXT: AtomicU32 = AtomicU32::new(0);
-
-    let directory = std::env::temp_dir().join(format!(
-        "kf-metric-{}-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|elapsed| elapsed.as_nanos())
-            .unwrap_or_default(),
-        NEXT.fetch_add(1, Ordering::Relaxed)
-    ));
-    fs::create_dir_all(&directory).expect("the directory is created");
-    directory
+    scratch("kfmetric")
 }
 
 #[test]
@@ -262,16 +250,7 @@ fn an_unknown_command_is_refused_with_the_usage() {
 mod rendering {
     use std::{fs, path::PathBuf, process::Command};
 
-    /// A directory of this test's own. These run in parallel, and a shared one
-    /// would have each removing the files the others are still reading.
-    fn scratch(label: &str) -> PathBuf {
-        let directory = std::env::temp_dir().join(format!(
-            "key-frame-kfmetric-report-{label}-{}",
-            std::process::id()
-        ));
-        fs::create_dir_all(&directory).expect("a scratch directory");
-        directory
-    }
+    use super::scratch;
 
     fn kfmetric(arguments: &[&str]) -> (i32, String, String) {
         let output = Command::new(env!("CARGO_BIN_EXE_kfmetric"))

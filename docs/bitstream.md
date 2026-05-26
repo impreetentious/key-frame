@@ -10,9 +10,10 @@ original educational format and is not compatible with a standardized codec.
 Version 1 carries progressive, 8-bit, JPEG-sited 4:2:0 frames. Width
 and height are even and lie in [64, 4096] × [64,
 2304]. Encoders pad to 64-pixel superblocks by edge replication;
-decoders crop output to the header dimensions. Coding blocks are 64, 32, 16,
-or 8 pixels. Transform sizes are 32, 16, 8, or 4; a 64 coding block contains
-four raster-ordered 32 transforms. Coefficient magnitude is at most 32767.
+decoders crop output to the header dimensions. Coding blocks are
+64, 32, 16, or 8 pixels; transform sizes are 32, 16, 8, or 4. A 64 coding
+block contains four raster-ordered 32 transforms. Coefficient
+magnitude is at most 32767.
 
 ## 2. Sequence header
 
@@ -142,20 +143,40 @@ Residual order is Y, U, V, then derived transform blocks in raster order. Each
 transform starts with `has_coeff`; zero ends that transform. One continues with
 last x/y, scan significance, greater-than-one, greater-than-two, a magnitude
 remainder, and one bypass sign per nonzero coefficient. The last coordinate is
-implicitly significant. The magnitude remainder is exp-Golomb k=0 coded entirely
-in bypass: there is no adaptive parameter, and a decoder needs no state to read
-it. Motion magnitude uses the same exp-Golomb k=0 code, but its first three
-prefix bins use contexts, the remaining prefix/suffix are bypass, and zero has
-no sign. `0` sign means positive and `1` means negative.
+implicitly significant. Scan position order is the alternating diagonal order
+literal in `scans.toml`, one table per transform size, as flat x/y/pairs pairs.
+The magnitude remainder is exp-Golomb k=0 coded entirely in bypass: there is
+no adaptive parameter, and a decoder needs no state to read it. Motion
+magnitude uses the same exp-Golomb k=0 code, but its first three prefix bins
+use contexts, the remaining prefix/suffix are bypass, and zero has no sign.
+`0` sign means positive and `1` means negative.
 
 ## 8. Prediction and reconstruction
 
 Intra modes are DC, planar, horizontal, vertical, D45, D135, D117, and D153.
 They use reconstructed top/left samples; unavailable samples use the nearest
-available value or 128 when neither side exists. Angular interpolation is
+available value or 128 when neither side exists, and a top-right reference
+never crosses the superblock the block sits in.
+
+DC fills the block with the rounded mean of the available top and left samples,
+and with 128 when neither side is available. Planar blends the four
+corners: for side N, `(left[row]*(N-1-column) + top_right*(column+1) +
+top[column]*(N-1-row) + bottom_left*(row+1) + N) / (2*N)`. Horizontal replicates
+the left column; vertical replicates the top row.
+
+Each angular mode projects onto one reference line. For declared angle `d`,
+`p = column*32 + (row+1)*d`; the reference index is the Euclidean quotient of
+`p` by 32 and `f` is its Euclidean remainder. A nonnegative index `i` reads
+`top[i]` and a negative one reads `left[-i-1]`, each clamped to the last
+reference the block has. The declared angles are
+D45 = 32, D135 = -32, D117 = -21, and D153 = -11. Angular interpolation is
 `((32-f)*a + f*b + 16) >> 5`.
 
-Inter uses LAST or GOLDEN with one quarter-pel motion vector. The predictor is
+Inter uses LAST or GOLDEN with one quarter-pel motion vector. Full-pixel
+motion lies in [-64, 64] and a vector carries 2 fractional
+bits, so a coded difference component whose magnitude exceeds
+`(64 - (-64)) << 2` is invalid syntax and rejects the
+frame. The predictor is
 the componentwise median of left, above, and above-right (falling back to
 above-left); a candidate contributes only when available, inter-coded, and on
 the selected reference, otherwise it contributes zero. Reference extension is
@@ -184,16 +205,16 @@ RDO estimate and are never presented as per-block payload ownership.
 ## 10. Deblocking and reference state
 
 Deblocking runs after full-frame reconstruction and before the result enters a
-reference slot. Coding-block and derived-transform edges of at least eight
-pixels are filtered vertical-then-horizontal. Strength 0, 1, or 2 comes from
-`deblock.toml`; a candidate is skipped when `|p0-q0| >= alpha(QP)`,
-`|p1-p0| >= beta(QP)`, or `|q1-q0| >= beta(QP)`. Luma strength 1 is the weak
-four-tap `delta = clip(((q0-p0)*4 + (p1-q1) + 4) >> 3, -tc, tc)` with
-`p0' = clip8(p0+delta)` and `q0' = clip8(q0-delta)`. Luma strength 2 is the
-strong six-tap smoother in the same asset. Chroma uses the weak filter at every
-nonzero strength. Threshold arrays alpha, beta, and tc are indexed by the
-rounded frame-QP average. Filtered output becomes LAST; a key or
-authoritative golden-refresh packet also becomes GOLDEN.
+reference slot. Coding-block and derived-transform edges of at least 8
+luma pixels are filtered vertical-then-horizontal. Strength 0, 1, or 2
+comes from `deblock.toml`; a candidate is skipped when `|p0-q0| >= alpha(QP)`,
+`|p1-p0| >= beta(QP)`, or `|q1-q0| >= beta(QP)`. Luma strength 1 is the
+weak four-tap `delta = clip(((q0-p0)*4 + (p1-q1) + 4) >> 3, -tc, tc)`
+with `p0' = clip8(p0 + delta)` and `q0' = clip8(q0 - delta)`. Luma
+strength 2 is the strong six-tap smoother in the same asset. Chroma uses the
+weak filter at every nonzero strength. Threshold arrays alpha, beta, and tc
+are indexed by the rounded frame-QP average. Filtered output becomes LAST; a
+key or authoritative golden-refresh packet also becomes GOLDEN.
 
 ## 11. Corruption state machine
 
