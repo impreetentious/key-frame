@@ -637,25 +637,38 @@ fn read_sequence(bytes: &[u8]) -> Result<(u16, u16, usize), ReferenceError> {
     // could not hold, which would then be caught here rather than truncated
     // into range.
     let (wide_width, wide_height) = (u32::from(width), u32::from(height));
-    if !(bounds.min_width..=bounds.max_width).contains(&wide_width)
-        || !width.is_multiple_of(2)
-        || !(bounds.min_height..=bounds.max_height).contains(&wide_height)
-        || !height.is_multiple_of(2)
-    {
-        return Err(ReferenceError::new(6, "sequence.dimensions"));
+    // Each field is refused at its own declared offset. This decoder used to
+    // group five pairs of fields onto the offset of the first of each pair —
+    // height reported at the width's byte, depth at the chroma's, the two frame
+    // rates and the keyframe interval all at byte 12, and the sequence flags at
+    // the golden interval's byte. The production decoder grouped only the first
+    // of those, so for six fields the two decoders named different bytes for
+    // the same damage and nothing compared them: the error matrix compares
+    // frame statuses, the campaign compares pictures, and the one test that
+    // looked at an offset printed it.
+    if !(bounds.min_width..=bounds.max_width).contains(&wide_width) || !width.is_multiple_of(2) {
+        return Err(ReferenceError::new(6, "sequence.width"));
     }
-    if reader.u8("sequence.chroma")? != bounds.chroma_code
-        || reader.u8("sequence.depth")? != bounds.bit_depth
+    if !(bounds.min_height..=bounds.max_height).contains(&wide_height) || !height.is_multiple_of(2)
     {
-        return Err(ReferenceError::new(10, "sequence.format"));
+        return Err(ReferenceError::new(8, "sequence.height"));
     }
-    for element in ["fps_num", "fps_den", "kf_interval"] {
+    if reader.u8("sequence.chroma")? != bounds.chroma_code {
+        return Err(ReferenceError::new(10, "sequence.chroma"));
+    }
+    if reader.u8("sequence.depth")? != bounds.bit_depth {
+        return Err(ReferenceError::new(11, "sequence.depth"));
+    }
+    for (offset, element) in [(12, "fps_num"), (14, "fps_den"), (16, "kf_interval")] {
         if reader.u16(element)? == 0 {
-            return Err(ReferenceError::new(12, element));
+            return Err(ReferenceError::new(offset, element));
         }
     }
-    if reader.u8("golden_interval")? == 0 || reader.u8("sequence.flags")? != 0 {
-        return Err(ReferenceError::new(18, "sequence.policy"));
+    if reader.u8("golden_interval")? == 0 {
+        return Err(ReferenceError::new(18, "golden_interval"));
+    }
+    if reader.u8("sequence.flags")? != 0 {
+        return Err(ReferenceError::new(19, "sequence.flags"));
     }
     let expected_crc = reader.u32("sequence.crc")?;
     if crc32c(&bytes[..20]) != expected_crc {

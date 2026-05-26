@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { parseCatalogue } from "../src/CuttingRoom";
-import { SourceError, parseY4m } from "../src/source";
+import { SOURCE_LIMITS, SourceError, parseY4m } from "../src/source";
 import { ReportError, blockAt, parseReport } from "../src/probe";
 import { OVERLAY_NAMES } from "../src/render";
 import { DEFAULT_VIEW, decodeView, encodeView, type ViewState } from "../src/share";
@@ -185,10 +185,14 @@ test("a catalogue entry missing a field is refused rather than rendered blank", 
 
 test("the page's Y4M reader accepts exactly what the codec's own reader accepts", () => {
   // Two readers of one format. The Rust one takes JPEG-sited 4:2:0 at even
-  // dimensions from 64x64 to 4096x2304 and nothing else; this one used to take
-  // three more chroma sitings and any positive dimensions, so the page would
-  // load a clip `kfenc` could not have produced the stream from and draw an
-  // error map against it.
+  // dimensions within the declared picture bounds and nothing else; this one
+  // used to take three more chroma sitings and any positive dimensions, so the
+  // page would load a clip `kfenc` could not have produced the stream from and
+  // draw an error map against it.
+  //
+  // The cases below are derived from `SOURCE_LIMITS` rather than written out.
+  // Spelling the bounds here would have made this suite a third copy of them,
+  // and the copy that agrees with the reader whatever the specification says.
   const clip = (header: string, frames = 1) => {
     const parts = [new TextEncoder().encode(`${header}\n`)];
     for (let index = 0; index < frames; index += 1) {
@@ -205,22 +209,26 @@ test("the page's Y4M reader accepts exactly what the codec's own reader accepts"
     return bytes;
   };
 
+  const { minWidth, minHeight, maxWidth, maxHeight, chroma: siting } = SOURCE_LIMITS;
+  const smallest = `W${minWidth} H${minHeight}`;
+
   // Accepted: the one siting, named or omitted.
-  expect(parseY4m(clip("YUV4MPEG2 W64 H64 F24:1 Ip C420jpeg")).width).toBe(64);
-  expect(parseY4m(clip("YUV4MPEG2 W64 H64 F24:1 Ip")).width).toBe(64);
+  expect(parseY4m(clip(`YUV4MPEG2 ${smallest} F24:1 Ip C${siting}`)).width).toBe(minWidth);
+  expect(parseY4m(clip(`YUV4MPEG2 ${smallest} F24:1 Ip`)).width).toBe(minWidth);
 
   // Refused: the sitings the codec does not code.
   for (const chroma of ["420", "420mpeg2", "420paldv", "422", "444"]) {
-    expect(() => parseY4m(clip(`YUV4MPEG2 W64 H64 F24:1 Ip C${chroma}`))).toThrow(SourceError);
+    expect(chroma).not.toBe(siting);
+    expect(() => parseY4m(clip(`YUV4MPEG2 ${smallest} F24:1 Ip C${chroma}`))).toThrow(SourceError);
   }
 
-  // Refused: dimensions outside the format, matching the Rust reader's bounds.
+  // Refused: one step outside each declared bound, and an odd dimension.
   for (const header of [
-    "YUV4MPEG2 W32 H64 F24:1 Ip C420jpeg",
-    "YUV4MPEG2 W64 H32 F24:1 Ip C420jpeg",
-    "YUV4MPEG2 W65 H64 F24:1 Ip C420jpeg",
-    "YUV4MPEG2 W4098 H64 F24:1 Ip C420jpeg",
-    "YUV4MPEG2 W64 H2306 F24:1 Ip C420jpeg",
+    `YUV4MPEG2 W${minWidth - 2} H${minHeight} F24:1 Ip C${siting}`,
+    `YUV4MPEG2 W${minWidth} H${minHeight - 2} F24:1 Ip C${siting}`,
+    `YUV4MPEG2 W${minWidth + 1} H${minHeight} F24:1 Ip C${siting}`,
+    `YUV4MPEG2 W${maxWidth + 2} H${minHeight} F24:1 Ip C${siting}`,
+    `YUV4MPEG2 W${minWidth} H${maxHeight + 2} F24:1 Ip C${siting}`,
   ]) {
     expect(() => parseY4m(clip(header))).toThrow(/dimensions this format allows/);
   }

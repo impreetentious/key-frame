@@ -50,6 +50,34 @@ function tableKeys(file, name) {
   );
 }
 
+/// One declared scalar or quoted string from a frozen asset.
+function declaredValue(file, key) {
+  const match = read(file).match(new RegExp(`^${key} = "?([^"\n]+?)"?\\s*$`, "m"));
+  if (!match) throw new Error(`${file} declares no ${key}`);
+  return match[1];
+}
+
+/// The value of one property of a `const NAME = { … } as const` object literal.
+function tableValue(file, name, property) {
+  const body = read(file);
+  const start = body.indexOf(`const ${name}`);
+  if (start === -1) throw new Error(`${file} declares no ${name}`);
+  const open = body.indexOf("{", start);
+  const close = body.indexOf("\n}", open);
+  if (open === -1 || close === -1) throw new Error(`${name} in ${file} is not an object literal`);
+  const match = body
+    .slice(open, close)
+    .match(new RegExp(`^\\s*${property}:\\s*"?([^",\n]+)"?,`, "m"));
+  if (!match) throw new Error(`${name} in ${file} has no ${property}`);
+  return match[1].trim();
+}
+
+function compareValue(label, mine, theirs) {
+  if (mine !== theirs) {
+    errors.push(`${label}: the page says ${JSON.stringify(mine)}, the specification says ${JSON.stringify(theirs)}`);
+  }
+}
+
 function compare(label, mine, theirs) {
   const missing = theirs.filter((name) => !mine.includes(name));
   const extra = mine.filter((name) => !theirs.includes(name));
@@ -81,6 +109,44 @@ const toolsets = [
 compare("toolset colours", tableKeys("inspector/src/Curves.tsx", "TOOLSET_COLOURS"), toolsets);
 compare("toolset notes", tableKeys("inspector/src/Curves.tsx", "TOOLSET_NOTES"), toolsets);
 
+// The page's Y4M reader, against the picture bounds and chroma siting the codec
+// declares.
+//
+// The reader had these as five literals, with a comment saying they were "the
+// same bounds the codec's own reader enforces" — true, and true because two
+// people typed the same numbers. A raised `max_width` would have left `kfenc`
+// encoding a clip the page then refused to load as its source, which is the
+// one comparison the page exists to make. The page ships as a static bundle
+// and cannot read a TOML asset at runtime, so the reconciliation belongs here.
+const constants = "spec/v1/constants.toml";
+for (const [property, key] of [
+  ["minWidth", "min_width"],
+  ["maxWidth", "max_width"],
+  ["minHeight", "min_height"],
+  ["maxHeight", "max_height"],
+]) {
+  compareValue(
+    `source reader ${key}`,
+    tableValue("inspector/src/source.ts", "SOURCE_LIMITS", property),
+    declaredValue(constants, key),
+  );
+}
+
+// The Y4M token carries the format's leading `C`; a chroma siting named on its
+// own does not, the same way the probe schema states it.
+compareValue(
+  "source reader chroma siting",
+  tableValue("inspector/src/source.ts", "SOURCE_LIMITS", "chroma"),
+  declaredValue(constants, "chroma_name").replace(/^C/, ""),
+);
+
+// The quantizer ceiling the QP overlay normalises by.
+compareValue(
+  "quantizer tint ceiling",
+  read("inspector/src/render.ts").match(/^export const QUANTIZER_CEILING = (\d+);$/m)?.[1],
+  declaredValue(constants, "qp_max"),
+);
+
 if (errors.length > 0) {
   console.error("interface-coherence: the page and the specification name different sets");
   for (const error of errors) console.error(` - ${error}`);
@@ -88,4 +154,4 @@ if (errors.length > 0) {
   process.exit(1);
 }
 
-console.log("interface-coherence: OK — the page's closed sets are the declared ones");
+console.log("interface-coherence: OK — the page's closed sets and declared bounds are the specification's");

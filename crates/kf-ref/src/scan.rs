@@ -177,8 +177,13 @@ fn read_header(bytes: &[u8]) -> Result<PacketHeader, ReferenceError> {
     if flag_bits & 0xf8 != 0 || !show || (key && !golden_refresh) {
         return Err(ReferenceError::new(12, "packet.flags"));
     }
-    if bytes[13] > limits().qp_max || u16::from_le_bytes([bytes[14], bytes[15]]) != 0 {
-        return Err(ReferenceError::new(13, "packet.qp_or_reserved"));
+    if bytes[13] > limits().qp_max {
+        return Err(ReferenceError::new(13, "packet.frame_qp"));
+    }
+    // The reserved field is refused at byte 14, where it is declared, rather
+    // than sharing the quantizer's offset the way these two used to.
+    if u16::from_le_bytes([bytes[14], bytes[15]]) != 0 {
+        return Err(ReferenceError::new(14, "packet.reserved"));
     }
     let header_crc = u32::from_le_bytes([bytes[16], bytes[17], bytes[18], bytes[19]]);
     if crc32c(&bytes[4..16]) != header_crc {

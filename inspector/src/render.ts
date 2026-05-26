@@ -109,10 +109,19 @@ export function drawOverlays(
   if (selected) drawSelection(state, selected);
 }
 
+/// The coarsest quantizer the format defines, which the QP tint normalises by.
+///
+/// `spec/v1/constants.toml` declares it as `qp_max`. It was a bare `63` in the
+/// divisor below, so raising the quantizer range would have left every tint on
+/// this page saturated at the old ceiling — a picture that still looks like a
+/// measurement. `scripts/ci/interface-coherence.mjs` holds it to the
+/// declaration, the same way it holds the intra-glyph table.
+export const QUANTIZER_CEILING = 63;
+
 function drawQpTint({ context, report }: OverlayContext): void {
   // One QP for the whole frame in version one, so the tint is a frame-level
   // wash rather than a per-block one. Warmer means coarser.
-  const warmth = Math.min(1, report.qp / 63);
+  const warmth = Math.min(1, report.qp / QUANTIZER_CEILING);
   context.fillStyle = `rgba(${Math.round(120 + 135 * warmth)}, ${Math.round(
     120 - 60 * warmth,
   )}, 40, 0.14)`;

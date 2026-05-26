@@ -25,16 +25,41 @@ use kf_tools::{
     psnr_y, sha256_hex,
 };
 
-const USAGE: &str = "\
+/// The quantizer this tool picks when the caller names none.
+///
+/// Unlike the two interval defaults it sits beside, no asset declares this one:
+/// it is a tool's choice, not part of the format, and the receipt an encode
+/// writes records the value that was used. One constant rather than two copies,
+/// because the help text and the parser used to spell it separately.
+const DEFAULT_QP: &str = "32";
+
+/// The help text, rendered from the declarations it describes.
+///
+/// It used to be a `const` string spelling out `0 through 63`, `default 32`,
+/// `default 120`, and `default 16`. Three of those four are declared in
+/// `spec/v1/constants.toml`, and the argument parser fifteen lines below reads
+/// two of them from there — so an edit to the specification would have changed
+/// what `kfenc` does and left `kfenc --help` describing the old behaviour. A
+/// help text is the one surface a user checks the tool against, which makes it
+/// the worst place to keep a stale copy.
+fn usage() -> String {
+    format!(
+        "\
 usage: kfenc --input <clip.y4m> --output <stream.kfv> [options]
 
-  --qp N               constant quantizer, 0 through 63, default 32
+  --qp N               constant quantizer, {qp_min} through {qp_max}, default {DEFAULT_QP}
   --bitrate BPS        average-bitrate target instead of a constant quantizer
-  --kf-interval N      keyframe interval, default 120
-  --golden-interval N  golden refresh interval, default 16
+  --kf-interval N      keyframe interval, default {keyframe}
+  --golden-interval N  golden refresh interval, default {golden}
   --stats FILE         decode the stream and write a receipt: the source by
                        content hash, the settings, the coded stream's hash, and
-                       each frame's payload and luma PSNR";
+                       each frame's payload and luma PSNR",
+        qp_min = declared_default("qp_min"),
+        qp_max = declared_default("qp_max"),
+        keyframe = declared_default("default_keyframe_interval"),
+        golden = declared_default("default_golden_interval"),
+    )
+}
 
 fn main() -> ExitCode {
     match run(env::args().skip(1).collect()) {
@@ -84,12 +109,13 @@ fn run(arguments: Vec<String>) -> Result<(), String> {
                 .parse::<u32>()
                 .map_err(|_| "--bitrate must be a positive integer".to_owned())?,
         ),
-        None => Rate::ConstantQp(
-            qp_flag
-                .unwrap_or("32")
-                .parse::<u8>()
-                .map_err(|_| "--qp must be an integer from 0 through 63".to_owned())?,
-        ),
+        None => Rate::ConstantQp(qp_flag.unwrap_or(DEFAULT_QP).parse::<u8>().map_err(|_| {
+            format!(
+                "--qp must be an integer from {} through {}",
+                declared_default("qp_min"),
+                declared_default("qp_max")
+            )
+        })?),
     };
     let encoder = match rate {
         Rate::Average(bitrate) => {
@@ -300,7 +326,7 @@ fn declared_default(key: &str) -> String {
 }
 
 fn value<'a>(arguments: &'a [String], flag: &str) -> Result<&'a str, String> {
-    optional_value(arguments, flag).ok_or_else(|| format!("missing {flag}\n\n{USAGE}"))
+    optional_value(arguments, flag).ok_or_else(|| format!("missing {flag}\n\n{}", usage()))
 }
 
 fn optional_value<'a>(arguments: &'a [String], flag: &str) -> Option<&'a str> {
@@ -325,8 +351,9 @@ fn reject_unknown(arguments: &[String]) -> Result<(), String> {
     while index < arguments.len() {
         if !known.contains(&arguments[index].as_str()) || index + 1 >= arguments.len() {
             return Err(format!(
-                "unknown or incomplete argument {}\n\n{USAGE}",
-                arguments[index]
+                "unknown or incomplete argument {}\n\n{}",
+                arguments[index],
+                usage()
             ));
         }
         index += 2;

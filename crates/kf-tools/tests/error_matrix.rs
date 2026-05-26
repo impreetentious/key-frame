@@ -8,9 +8,9 @@
 //! The invariant underneath all of it: no corrupt, held, or dependency-lost
 //! image or context state may ever reach later prediction.
 
-use kf_bitstream::{FRAME_HEADER_SIZE, SEQUENCE_HEADER_SIZE, SequenceHeader};
+use kf_bitstream::{BitstreamError, FRAME_HEADER_SIZE, SEQUENCE_HEADER_SIZE, SequenceHeader};
 use kf_core::crc32c;
-use kf_dec::{FastDecoder, FrameStatus, Recovery};
+use kf_dec::{DecodeError, FastDecoder, FrameStatus, Recovery};
 use kf_enc::Encoder;
 use kf_frame::Frame;
 use kf_ref::{RefFrameStatus, RefRecovery, ReferenceDecoder};
@@ -38,6 +38,105 @@ fn source_frames() -> Vec<Frame> {
             frame
         })
         .collect()
+}
+
+/// The byte offset `fields.toml` declares for one sequence-header field.
+fn declared_offset(field: &str) -> u32 {
+    let contents = kf_spec::V1_ASSETS
+        .iter()
+        .find(|asset| asset.name == "fields.toml")
+        .expect("the specification exposes fields.toml")
+        .contents;
+    let sequence = contents
+        .split_once("[sequence]")
+        .expect("fields.toml declares a sequence header")
+        .1
+        .split_once("[packet]")
+        .map_or(contents, |(before, _)| before);
+    let needle = format!("\"{field}:");
+    sequence
+        .lines()
+        .find_map(|line| {
+            let entry = line.trim().strip_prefix(&needle)?;
+            entry
+                .split_once('@')?
+                .1
+                .trim_end_matches("\",")
+                .parse()
+                .ok()
+        })
+        .unwrap_or_else(|| panic!("fields.toml declares no sequence field {field}"))
+}
+
+/// A sequence header with one field spoiled, sealed so only that field is wrong.
+fn spoiled_header(width: u16, height: u16, chroma: u8, depth: u8) -> Vec<u8> {
+    let mut bytes = vec![0_u8; SEQUENCE_HEADER_SIZE];
+    bytes[..4].copy_from_slice(b"KFV1");
+    bytes[4..6].copy_from_slice(&1_u16.to_le_bytes());
+    bytes[6..8].copy_from_slice(&width.to_le_bytes());
+    bytes[8..10].copy_from_slice(&height.to_le_bytes());
+    bytes[10] = chroma;
+    bytes[11] = depth;
+    bytes[12..14].copy_from_slice(&24_u16.to_le_bytes());
+    bytes[14..16].copy_from_slice(&1_u16.to_le_bytes());
+    bytes[16..18].copy_from_slice(&120_u16.to_le_bytes());
+    bytes[18] = 16;
+    let crc = crc32c(&bytes[..20]);
+    bytes[20..24].copy_from_slice(&crc.to_le_bytes());
+    bytes
+}
+
+/// Both decoders name the same byte, and it is the byte the field is declared at.
+///
+/// The two implementations classify damage independently, and the matrix below
+/// compares the frame statuses they reach. What nothing compared was the offset
+/// and field name each one puts in its error — and they disagreed about six
+/// fields. This decoder reported a bad height at the width's byte; the
+/// reference decoder did too, and additionally collapsed depth onto chroma's
+/// byte, both frame rates and the keyframe interval onto byte 12, the sequence
+/// flags onto the golden interval's byte, and the packet's reserved field onto
+/// the quantizer's. An offset in an error exists so a reader can find the field.
+#[test]
+fn both_decoders_refuse_a_spoiled_field_at_the_byte_it_is_declared_at() {
+    let cases: [(&str, Vec<u8>); 6] = [
+        ("width", spoiled_header(62, 64, 1, 8)),
+        ("width", spoiled_header(65, 64, 1, 8)),
+        ("height", spoiled_header(64, 2306, 1, 8)),
+        ("height", spoiled_header(64, 65, 1, 8)),
+        ("chroma", spoiled_header(64, 64, 2, 8)),
+        ("depth", spoiled_header(64, 64, 1, 9)),
+    ];
+    for (field, bytes) in cases {
+        let declared = declared_offset(field);
+
+        let fast = match FastDecoder::new().decode_stream(&bytes) {
+            Err(DecodeError::Bitstream(BitstreamError::InvalidField { offset, element })) => {
+                (offset, element)
+            }
+            other => panic!("fast decoder on a bad {field}: {other:?}"),
+        };
+        let reference = match ReferenceDecoder::new().decode_stream(&bytes) {
+            Err(error) => (error.offset, error.element),
+            Ok(_) => panic!("the reference decoder accepted a bad {field}"),
+        };
+
+        assert_eq!(
+            fast.0, declared,
+            "the fast decoder put a bad {field} at byte {}",
+            fast.0
+        );
+        assert_eq!(
+            reference.0, declared,
+            "the reference decoder put a bad {field} at byte {}",
+            reference.0
+        );
+        assert!(
+            fast.1.ends_with(field) && reference.1.ends_with(field),
+            "a bad {field} was named {} and {}",
+            fast.1,
+            reference.1
+        );
+    }
 }
 
 fn clean_stream() -> Vec<u8> {

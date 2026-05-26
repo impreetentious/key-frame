@@ -114,16 +114,22 @@ impl SequenceHeader {
     }
 
     fn validate(self) -> Result<(), BitstreamError> {
-        if self.width < 64
-            || self.width > 4096
-            || !self.width.is_multiple_of(2)
-            || self.height < 64
-            || self.height > 2304
-            || !self.height.is_multiple_of(2)
-        {
+        // Width and height are checked apart, because the offset an error
+        // carries exists to name the field that was wrong. Both used to be
+        // reported as `sequence.dimensions` at byte 6, so a header whose only
+        // fault was its height sent a reader to the two bytes that hold the
+        // width. `crates/kf-bitstream/tests/offset_probe.rs` printed exactly
+        // that mismatch for as long as the file existed and asserted nothing.
+        if self.width < 64 || self.width > 4096 || !self.width.is_multiple_of(2) {
             return Err(BitstreamError::InvalidField {
                 offset: 6,
-                element: "sequence.dimensions",
+                element: "sequence.width",
+            });
+        }
+        if self.height < 64 || self.height > 2304 || !self.height.is_multiple_of(2) {
+            return Err(BitstreamError::InvalidField {
+                offset: 8,
+                element: "sequence.height",
             });
         }
         for (value, offset, element) in [

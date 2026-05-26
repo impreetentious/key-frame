@@ -43,6 +43,75 @@ fn kfenc(arguments: &[&str]) -> (i32, String) {
     )
 }
 
+/// `kfenc`'s stderr, which is where the help text goes.
+fn kfenc_stderr(arguments: &[&str]) -> String {
+    let output = Command::new(env!("CARGO_BIN_EXE_kfenc"))
+        .args(arguments)
+        .output()
+        .expect("kfenc runs");
+    String::from_utf8_lossy(&output.stderr).into_owned()
+}
+
+/// One declared scalar, read the way the tool reads it.
+fn declared(key: &str) -> String {
+    kf_spec::V1_ASSETS
+        .iter()
+        .find(|asset| asset.name == "constants.toml")
+        .expect("the specification exposes constants.toml")
+        .contents
+        .lines()
+        .find_map(|line| Some(line.strip_prefix(&format!("{key} = "))?.trim().to_owned()))
+        .unwrap_or_else(|| panic!("constants.toml declares no {key}"))
+}
+
+/// The help text is held to the declarations, in both directions.
+///
+/// It used to spell the quantizer range and both interval defaults out as
+/// literals while the parser below it read two of them from the specification,
+/// so an edit to a declaration would have changed what the tool does and left
+/// `kfenc --help` describing what it used to do. Checking that each declared
+/// value appears is only half of it: the set of numbers in the text is compared
+/// against the set it is allowed to contain, so a number typed back in fails
+/// here rather than waiting for a reader to notice.
+#[test]
+fn the_help_text_states_the_declared_defaults_and_nothing_else() {
+    let help = kfenc_stderr(&["--nonsense"]);
+    assert!(help.contains("usage: kfenc"), "no help text in {help:?}");
+
+    let qp_min = declared("qp_min");
+    let qp_max = declared("qp_max");
+    let keyframe = declared("default_keyframe_interval");
+    let golden = declared("default_golden_interval");
+    for value in [&qp_min, &qp_max, &keyframe, &golden] {
+        assert!(
+            help.contains(value.as_str()),
+            "the help text does not state the declared {value}: {help}"
+        );
+    }
+
+    // The quantizer default is the one number here that no asset declares; it
+    // is the tool's own choice and lives as a single constant in the binary.
+    let allowed = [qp_min, qp_max, keyframe, golden, "32".to_owned()];
+    let mut digits = String::new();
+    let mut found = Vec::new();
+    for character in help.chars().chain(std::iter::once(' ')) {
+        if character.is_ascii_digit() {
+            digits.push(character);
+        } else {
+            if digits.len() > 1 {
+                found.push(std::mem::take(&mut digits));
+            }
+            digits.clear();
+        }
+    }
+    for number in &found {
+        assert!(
+            allowed.contains(number),
+            "the help text states {number}, which is neither declared nor the tool's own default: {help}"
+        );
+    }
+}
+
 #[test]
 fn the_receipt_records_every_figure_the_table_prints() {
     let directory = scratch("receipt");

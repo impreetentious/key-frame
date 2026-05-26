@@ -26,6 +26,24 @@ export interface SourceClip {
 
 export class SourceError extends Error {}
 
+/// The picture bounds and chroma siting the codec accepts.
+///
+/// These are `spec/v1/constants.toml`'s `min_width`, `max_width`, `min_height`,
+/// `max_height`, and `chroma_name`, and they used to be five literals inside
+/// the reader below — the same numbers the Rust reader enforces, agreeing with
+/// it because two people typed them rather than because either read the
+/// declaration. The page ships as a static bundle with no asset loader, so it
+/// cannot read the TOML at runtime; `scripts/ci/interface-coherence.mjs`
+/// compares this table against the declaration instead, the same way it
+/// compares the intra-glyph table.
+export const SOURCE_LIMITS = {
+  minWidth: 64,
+  maxWidth: 4096,
+  minHeight: 64,
+  maxHeight: 2304,
+  chroma: "420jpeg",
+} as const;
+
 /// Parses strict 8-bit 4:2:0 YUV4MPEG2, the one format the codec accepts.
 ///
 /// Deliberately narrow. A permissive reader would accept a 4:2:2 or 10-bit clip
@@ -42,7 +60,7 @@ export function parseY4m(bytes: Uint8Array): SourceClip {
 
   let width = 0;
   let height = 0;
-  let chroma = "420jpeg";
+  let chroma: string = SOURCE_LIMITS.chroma;
   for (const tag of tags.slice(1)) {
     const kind = tag[0];
     const value = tag.slice(1);
@@ -61,10 +79,10 @@ export function parseY4m(bytes: Uint8Array): SourceClip {
   if (
     !Number.isInteger(width) ||
     !Number.isInteger(height) ||
-    width < 64 ||
-    height < 64 ||
-    width > 4096 ||
-    height > 2304 ||
+    width < SOURCE_LIMITS.minWidth ||
+    height < SOURCE_LIMITS.minHeight ||
+    width > SOURCE_LIMITS.maxWidth ||
+    height > SOURCE_LIMITS.maxHeight ||
     width % 2 !== 0 ||
     height % 2 !== 0
   ) {
@@ -75,7 +93,7 @@ export function parseY4m(bytes: Uint8Array): SourceClip {
   // different places, and this reader used to take them while `kfenc` refused
   // them. Two readers of one format that disagree about what the format is are
   // worse than either of them alone.
-  if (chroma !== "420jpeg") {
+  if (chroma !== SOURCE_LIMITS.chroma) {
     throw new SourceError(`chroma ${chroma} is not JPEG-sited 8-bit 4:2:0`);
   }
 
