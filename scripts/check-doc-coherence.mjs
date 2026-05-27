@@ -101,6 +101,7 @@ const verifyWords = new Map([
   ["random-access seek gate", "random-access-seek"],
   ["native and WebAssembly equality gate", "WebAssembly-equality"],
   ["projection room build, budget, and browser smoke", "projection-room"],
+  ["terminal demo", "terminal-demo"],
   ["cargo fmt", "formatting"],
   ["cargo clippy", "lints"],
   ["forbidden API scan and decoder boundary", "forbidden-API"],
@@ -108,7 +109,14 @@ const verifyWords = new Map([
   ["rustdoc", "the documentation build"],
 ]);
 
-const verifySection = readme.split("\n## Verify\n")[1]?.split("\n## ")[0] ?? "";
+// Whitespace-collapsed before matching, because these are phrases in wrapped
+// prose: "the documentation build" is one word-sequence to a reader and three
+// tokens with a newline in the middle to a substring search, and rewrapping a
+// paragraph is not supposed to be able to fail this.
+const verifySection = (readme.split("\n## Verify\n")[1]?.split("\n## ")[0] ?? "").replace(
+  /\s+/g,
+  " ",
+);
 if (!verifySection) {
   errors.push("README has no ## Verify section describing what preflight runs");
 } else {

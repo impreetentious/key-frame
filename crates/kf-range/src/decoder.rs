@@ -39,12 +39,6 @@ impl<'a> RangeDecoder<'a> {
         self.decode_bin(2048)
     }
 
-    /// Number of payload bytes consumed, including the five-byte initializer.
-    #[must_use]
-    pub const fn bytes_consumed(&self) -> u32 {
-        self.offset
-    }
-
     /// Remaining CRC-bound finalization bytes after dimension-derived syntax.
     #[must_use]
     pub fn unread_tail(&self) -> &'a [u8] {

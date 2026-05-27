@@ -53,10 +53,4 @@ impl StreamReport {
     pub fn count(&self, status: FrameStatus) -> usize {
         self.statuses.iter().filter(|&&s| s == status).count()
     }
-
-    /// True when no packet was corrupt or dependency-lost.
-    #[must_use]
-    pub fn is_clean(&self) -> bool {
-        self.statuses.iter().all(|status| status.produced_image())
-    }
 }

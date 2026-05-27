@@ -115,12 +115,6 @@ impl ReferenceCoverage {
         }
     }
 
-    /// Whether a context id was read.
-    #[must_use]
-    pub fn has_context(&self, id: u16) -> bool {
-        self.contexts.get(usize::from(id)).copied().unwrap_or(false)
-    }
-
     /// Whether an element was read.
     #[must_use]
     pub const fn has_element(&self, element: ReferenceElement) -> bool {

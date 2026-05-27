@@ -223,8 +223,9 @@ transform, bitstream, syntax, reference-decoder, probe, intra,
 native-conformance, inter-codec, entropy, deblock, natural-corpus, rate-control,
 quality-metric, rate-distortion, decoder-campaign, error-matrix,
 conformance-coverage, random-access-seek, WebAssembly-equality, and
-projection-room gates, then formatting, lints, the forbidden-API and
-decoder-boundary scan, the full test suite, and the documentation build.
+projection-room gates, then the terminal-demo end to end, then formatting,
+lints, the forbidden-API and decoder-boundary scan, the full test suite, and the
+documentation build.
 
 ## Build and deploy
 
@@ -247,8 +248,8 @@ preflight green.
 
 ## License
 
-[MIT](LICENSE) © 2024-2026 Sidakpreet Singh
+Apache-2.0 © 2024-2026 Sidakpreet Singh — see [LICENSE](LICENSE).
 
 ---
 
-**Version:** v0.13.24
+**Version:** v0.14.0

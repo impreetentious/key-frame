@@ -20,6 +20,7 @@ use std::{collections::BTreeSet, fs, path::PathBuf, process::ExitCode};
 
 use kf_bitstream::SyntaxElement;
 use kf_dec::FastDecoder;
+use kf_range::CoverageCounter;
 use kf_ref::ReferenceDecoder;
 
 struct Vector {
@@ -247,7 +248,13 @@ fn measure(path: &std::path::Path) -> Result<Measured, String> {
         return Err("the two decoders produced different frames".to_owned());
     }
 
-    let fast_contexts: BTreeSet<u16> = (0..144).filter(|id| fast.contexts.contains(*id)).collect();
+    // The range is the counter's own capacity, not a literal. A hardcoded 144
+    // here would have quietly stopped comparing the ids past it the day the
+    // context bank grew, and this is the check that the two decoders coded the
+    // same set — the one place a silently shortened range would matter most.
+    let fast_contexts: BTreeSet<u16> = (0..CoverageCounter::capacity())
+        .filter(|id| fast.contexts.contains(*id))
+        .collect();
     let reference_contexts: BTreeSet<u16> = reference.context_ids().into_iter().collect();
     if fast_contexts != reference_contexts {
         return Err(format!(

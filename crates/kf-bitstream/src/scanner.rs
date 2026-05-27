@@ -1,4 +1,4 @@
-use crate::{BitstreamError, FRAME_HEADER_SIZE, FramePacket, PacketHeader};
+use crate::{BitstreamError, FramePacket, PacketHeader};
 
 /// One structurally accepted scan outcome.
 ///
@@ -155,11 +155,5 @@ impl<'a> PacketScanner<'a> {
     #[must_use]
     pub const fn last_seen_index(&self) -> Option<u32> {
         self.last_seen_index
-    }
-
-    /// Minimum bytes needed before fixed-header parsing can begin.
-    #[must_use]
-    pub const fn fixed_header_size() -> usize {
-        FRAME_HEADER_SIZE
     }
 }

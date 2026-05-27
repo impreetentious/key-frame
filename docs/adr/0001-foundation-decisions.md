@@ -12,8 +12,8 @@ begins.
 
 ## Decisions
 
-1. **MIT license** — a codec and its bitstream want maximum reuse; nothing here
-   needs copyleft.
+1. **Apache-2.0 license** — a codec and its bitstream want maximum reuse;
+   nothing here needs copyleft.
 2. **Original bitstream only** — Key Frame implements no proprietary or
    standardized format and will never gain compatibility with one. The IP
    posture ships verbatim in the README, and the project is never marketed as a

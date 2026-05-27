@@ -18,10 +18,10 @@ members = [
 ]
 
 [workspace.package]
-version = "0.13.24"
+version = "0.14.0"
 authors = ["Sidakpreet Singh"]
 edition = "2024"
-license = "MIT"
+license = "Apache-2.0"
 publish = false
 
 [workspace.lints.rust]
