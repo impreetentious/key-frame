@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Prove the syntax-coverage inventory matches the frozen 144-context asset."""
+"""Prove the syntax-coverage inventory matches the frozen context asset.
+
+The context count and the bitstream version are read from the assets that
+declare them. They were literals here — four spellings of `144` and one of the
+version — in a script whose entire job is refusing a second copy of a declared
+value, and `scripts/ci/declared-scalar-use.sh` could not see them because its
+restatement scan looked at shell, Node, and workflow files and not at Python.
+"""
 
 from __future__ import annotations
 
@@ -13,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[2]
 CONTEXTS = ROOT / "spec" / "v1" / "contexts.toml"
 COVERAGE = ROOT / "conformance" / "syntax-coverage.toml"
 SYNTAX = ROOT / "spec" / "v1" / "syntax.toml"
+CONSTANTS = ROOT / "spec" / "v1" / "constants.toml"
 
 
 def toml_arrays(path: Path, key: str) -> list:
@@ -45,6 +53,11 @@ def scalar_int(path: Path, key: str) -> int | None:
 
 def main() -> int:
     errors = []
+    declared_count = scalar_int(CONTEXTS, "count")
+    declared_version = scalar_int(CONSTANTS, "bitstream_version")
+    if declared_count is None or declared_version is None:
+        print("syntax-coverage: FAILED — the assets declare no context count or bitstream version")
+        return 1
     context_ids = []
     for group in toml_arrays(CONTEXTS, "ids"):
         context_ids.extend(group)
@@ -52,14 +65,16 @@ def main() -> int:
     for group in toml_arrays(COVERAGE, "ids"):
         coverage_ids.extend(group)
 
-    if context_ids != list(range(144)):
-        errors.append("contexts.toml ids are not the contiguous range 0..143")
+    if context_ids != list(range(declared_count)):
+        errors.append(
+            "contexts.toml ids are not the contiguous range 0..%d" % (declared_count - 1)
+        )
     if coverage_ids != context_ids:
         errors.append("syntax-coverage.toml ids must equal the frozen context id list")
-    if scalar_int(COVERAGE, "context_count") != 144:
-        errors.append("syntax-coverage.toml context_count must be 144")
-    if scalar_int(COVERAGE, "bitstream_version") != 1:
-        errors.append("syntax-coverage.toml bitstream_version must be 1")
+    if scalar_int(COVERAGE, "context_count") != declared_count:
+        errors.append("syntax-coverage.toml context_count must be %d" % declared_count)
+    if scalar_int(COVERAGE, "bitstream_version") != declared_version:
+        errors.append("syntax-coverage.toml bitstream_version must be %d" % declared_version)
 
     context_groups = toml_names(CONTEXTS, "[[groups]]")
     coverage_groups = toml_names(COVERAGE, "[[groups]]")
@@ -133,8 +148,13 @@ def main() -> int:
             print(" - %s" % error)
         return 1
     print(
-        "syntax-coverage: OK — 144 ids across %d groups, %d held in reserve, %d elements"
-        % (len(coverage_groups), sum(len(dead) for dead in reserved), len(coverage_elements))
+        "syntax-coverage: OK — %d ids across %d groups, %d held in reserve, %d elements"
+        % (
+            declared_count,
+            len(coverage_groups),
+            sum(len(dead) for dead in reserved),
+            len(coverage_elements),
+        )
     )
     return 0
 

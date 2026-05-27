@@ -142,7 +142,13 @@ fi
 # the declared budget would have left that job running the old number and
 # reporting a clean campaign. No shell script, Node script, or workflow may
 # spell out a declared value; it reads the declaration, the way the gates that
-# already do this show how.
+# already do this show how. Python counts: the syntax-coverage checker spelled
+# the context count out four times and the bitstream version once, and this scan
+# looked at shell, Node, and workflow files only, so the one script in the tree
+# whose whole job is refusing a second copy of a declared value was keeping five.
+# The specification scripts under `spec/` stay outside, because a literal there
+# is the reviewed derivation a declaration is checked against rather than a copy
+# of it, and `spec/mutation_check.py` proves each one is load-bearing.
 #
 # Known limit: this matches the number as written. The module size budget was
 # restated as `1.5 * 1024 * 1024` — the declared value in a spelling no search
@@ -161,7 +167,7 @@ while read -r name value; do
     location="${hit#*:}"
     restated+="  $name ($value) spelled out at ${hit%%:*}:${location%%:*}"$'\n'
   done < <(grep -rnE "(^|[^0-9.])${value}([^0-9.]|$)" \
-    --include='*.sh' --include='*.mjs' --include='*.yml' \
+    --include='*.sh' --include='*.mjs' --include='*.yml' --include='*.py' \
     scripts .github 2>/dev/null || true)
 done < <(grep -oE '^[a-z_0-9]+ = [0-9]{4,}$' spec/v1/constants.toml | sed 's/ = / /')
 

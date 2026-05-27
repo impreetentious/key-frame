@@ -63,7 +63,7 @@ specification. Every gate in the repository exists to prove the two agree.
   and the WebAssembly boundary are all written here and read here, and a gate
   fails the build if the lockfile ever resolves a package this workspace does
   not contain.
-- Checks integer overflow in release builds too, so the twenty-million-stream
+- Checks integer overflow in release builds too, so the eighty-million-stream
   campaign, the natural-corpus proof, and the browser module stop on a wrapping
   addition instead of quietly decoding a wrong sample from one.
 - Decodes in the browser through a WebAssembly module that imports nothing, so
@@ -251,4 +251,4 @@ preflight green.
 
 ---
 
-**Version:** v0.13.23
+**Version:** v0.13.24

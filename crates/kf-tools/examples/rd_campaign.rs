@@ -53,8 +53,16 @@ const ABR_FRACTIONS: [(u32, u32); 3] = [(1, 2), (1, 1), (2, 1)];
 /// Longer than the rate–distortion ladder uses, and deliberately so. The rate
 /// controller is a single-pass leaky bucket: it starts from an initial fill and
 /// converges, so a window shorter than its convergence time measures the
-/// transient rather than the controller. Measured on the pinned corpus, the
-/// error at 24 frames runs from 5% to 13% and settles inside 3% by 48.
+/// transient rather than the controller. `scripts/ci/rate-gate.sh` measures
+/// both lengths at each disclosed operating point and requires the shorter to
+/// be the worse of the two.
+///
+/// This note used to state that the error "runs from 5% to 13% at 24 frames and
+/// settles inside 3% by 48". Both halves were wrong: nothing produced the
+/// range, and the receipt this file writes has a worst case of 5.32% at 48
+/// frames, which `crates/kf-tools/tests/receipt_shape.rs` pins and
+/// `docs/LIMITATIONS.md` publishes. A comment restating a measured figure is a
+/// copy that goes stale, and this one contradicted the number beside it.
 ///
 /// Choosing the longer window because it flatters the result would be exactly
 /// the kind of quiet choice the benchmark rules exist to prevent, so the count

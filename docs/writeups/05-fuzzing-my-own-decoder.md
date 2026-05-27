@@ -4,8 +4,21 @@ A decoder is a program that reads bytes it did not write. That is the entire
 security story, and it is why a decoder is one of the few kinds of program where
 "it works on valid input" is close to worthless as a claim.
 
-Key Frame's decoders have run twenty million iterations a night across four
-campaigns. This is what that found, and — more usefully — what it did not.
+Key Frame's decoders have been through eighty million mutated inputs: twenty
+million against each of four campaigns, which is what `spec/v1/constants.toml`
+declares and `crates/kf-fuzz/tests/campaign.rs` holds the harness to. This is
+what that found, and — more usefully — what it did not.
+
+A note on "a night", because this page used to open with it. The budget above
+belongs to a nightly workflow, and no hosted pipeline has ever run it — the
+repository's remote does not run the pipeline it ships, which
+[`docs/LIMITATIONS.md`](../LIMITATIONS.md) states plainly and
+[ADR-0018](../adr/0018-preflight-is-the-arbiter.md) records. The run behind this
+page was executed by hand on a development machine at the full declared budget,
+from the same fixed seeds the workflow would use, and took a little over ten
+hours. Preflight runs the same four campaigns at a smaller declared count on
+every change. The sentence that stood here for months described a schedule
+rather than a result, and it understated its own subject fourfold.
 
 ## Four campaigns, because random bytes are not enough
 
@@ -42,8 +55,9 @@ exactly rather than approximately.
 
 ## The one real bug
 
-Twenty million iterations, zero panics, zero hangs. One genuine finding, and it
-is the interesting kind: it was not a crash.
+Eighty million iterations, zero panics, zero hangs, and no case where the two
+decoders disagreed about a stream either of them accepted. One genuine finding,
+and it is the interesting kind: it was not a crash.
 
 The structured-mutation campaign inserted eight garbage bytes between the
 sequence header and the first packet, and the bytes happened to begin `KFP1` —
@@ -116,13 +130,15 @@ implementation had been written from the rule.
 
 ## The honest summary
 
-Twenty million iterations found one bug. That sounds like a poor return, and by
+Eighty million iterations found one bug. That sounds like a poor return, and by
 the usual metric it is.
 
 But the campaign is not really a bug-finding exercise any more; it is a
 regression harness with a very large input space. Its value is not the bug it
 found in November, it is that the same bug cannot come back, and neither can any
-of the other thousands of shapes it explores every night while nobody watches.
+of the other thousands of shapes a full campaign explores while nobody watches.
+The seeds are fixed, so every run of it explores the same eighty million; that
+is what makes it a regression harness rather than a search.
 
 The bugs that matter were found by writing things twice and requiring agreement.
 Fuzzing is how you keep them found.

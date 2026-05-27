@@ -27,8 +27,16 @@ while IFS=$'\t' read -r name file _url _md5 _width _height _frames; do
       exit 1
       ;;
   esac
+  # Two lengths, not one. `docs/LIMITATIONS.md` says the controller is a
+  # single-pass leaky bucket that is measurably worse before it settles, and
+  # that sentence used to carry a range of percentages no receipt, gate, or
+  # decision record produced. The claim that is actually worth making is the
+  # shape — a short prefix is worse than the settled length — and it is checked
+  # here on every run at both disclosed operating points. The comparison lives
+  # in the tool rather than in this script, because no shell script in this
+  # repository re-implements a reader of a tool's own output.
   cargo run --release --locked --quiet -p kf-tools --example measure_rate -- \
-    --input "corpus/clips/$file" --bitrate "$target" --frames 48
+    --input "corpus/clips/$file" --bitrate "$target" --frames 48 --converges-from 24
   measured=$((measured + 1))
 done < <("$repo_root/scripts/corpus-manifest.sh")
 
@@ -37,4 +45,4 @@ if [[ $measured -eq 0 ]]; then
   exit 1
 fi
 
-echo "rate-gate: OK — leaky-bucket bounds, deterministic ABR, $measured corpus point(s) within 5%"
+echo "rate-gate: OK — leaky-bucket bounds, deterministic ABR, $measured corpus point(s) within tolerance at 48 frames and measurably worse at 24"

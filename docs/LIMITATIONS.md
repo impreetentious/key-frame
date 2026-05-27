@@ -131,10 +131,23 @@ matrix asserts each of them in both decoders.
 - **Average-bitrate accuracy is a steady-state figure with a measured
   envelope.** The controller is a single-pass leaky bucket that starts from an
   initial fill and converges, so it is measurably worse over a short clip than a
-  long one: on the pinned corpus the error runs from 5% to 13% over 24 frames
-  and settles by 48. The published accuracy is measured over 48 frames and the
-  receipt records the count. If you encode a clip shorter than about a second
-  and a half at a bitrate target, expect it to undershoot.
+  long one. `scripts/ci/rate-gate.sh` measures both lengths at each disclosed
+  operating point on every run and requires the 24-frame error to be worse than
+  the 48-frame one; both figures are printed where you can read them. The
+  published accuracy is the 48-frame measurement and the receipt records the
+  count. If you encode a clip shorter than about a second and a half at a
+  bitrate target, expect it to miss by more — in either direction. This page
+  used to say it would undershoot; of the two pinned clips, the low-motion one
+  undershoots at 24 frames and the high-motion one overshoots, and the gate now
+  prints the sign of each miss so the direction is something a reader sees.
+
+  No short-clip percentage is published here. This paragraph used to state that
+  the error "runs from 5% to 13% over 24 frames", and nothing in the repository
+  produced either number: the receipt measures 48 frames, the decision record
+  behind the controller measures a different sweep, and re-measuring the six
+  campaign targets at 24 frames gives a range that contains neither bound. A
+  figure with nothing behind it is the thing this page exists to not have, so
+  the checked property replaced it.
 
   Even converged, it is not uniformly within 5%. The campaign measures six
   average-bitrate operating points — three targets on each of the two pinned
@@ -204,11 +217,19 @@ run. The definitions are correct and reviewed; nothing has executed them.
 What follows from that is stated rather than worked around. Every claim in this
 repository names a check `./scripts/preflight.sh` runs, because that is the
 command a reader can run themselves. Three things the workflows would do are
-larger than preflight and are named here rather than counted as done: the second
-native target, the nightly campaign's full declared budget against preflight's
-smaller one, and all sixty rate–distortion points against the two ladder ends
-the change-time gate re-encodes. [ADR-0018](adr/0018-preflight-is-the-arbiter.md)
-records the decision and what was considered instead.
+larger than preflight: the second native target, the nightly campaign's full
+declared budget against preflight's smaller one, and all sixty rate–distortion
+points against the two ladder ends the change-time gate re-encodes.
+
+Two of those three have been executed by hand on a development machine, and the
+pages that describe them say when and at what budget rather than implying a
+schedule: the decoder campaigns at their full declared count
+([`writeups/05`](writeups/05-fuzzing-my-own-decoder.md)) and the sixty-point
+receipt recheck ([`writeups/06`](writeups/06-honest-rate-distortion.md)). The
+first cannot be: reproducing a stream on a second native target needs a second
+native target, and running it by hand on one machine would prove nothing about
+the other. [ADR-0018](adr/0018-preflight-is-the-arbiter.md) records the decision
+and what was considered instead.
 
 ---
 

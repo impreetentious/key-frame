@@ -320,7 +320,16 @@ mod tests {
 
     #[test]
     fn a_zero_length_allocation_is_still_a_usable_offset() {
+        // Zero is the sentinel `kf_alloc` returns when it cannot allocate, and
+        // `kf_free` treats it as a no-op — so an empty allocation that came
+        // back as zero would be reported to the host as a failure and would
+        // never be freed. That is exactly the property this test is named for,
+        // and it used to call both functions and assert nothing at all.
         let offset = kf_alloc(0);
+        assert_ne!(
+            offset, 0,
+            "an empty allocation must be distinguishable from a failed one"
+        );
         kf_free(offset, 0);
     }
 
