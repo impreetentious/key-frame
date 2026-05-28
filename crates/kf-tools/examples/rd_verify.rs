@@ -9,7 +9,7 @@
 //! The average-bitrate half of the receipt is re-encoded the same way. It was
 //! not: the receipt has always carried a coded size, an achieved bitrate, an
 //! accuracy figure, both metrics, and a stream hash for every average-bitrate
-//! target, and nothing recomputed any of them, while `docs/LIMITATIONS.md`
+//! target, and nothing recomputed any of them, while `docs/CODEC-SPEC.md`
 //! published the envelope those figures describe.
 //!
 //! It also recomputes the BD-rate of each ablation against the full toolset and
@@ -242,7 +242,7 @@ fn run(arguments: Vec<String>) -> Result<String, String> {
 /// The curves were rechecked on every run and these were not: the receipt has
 /// always carried a coded size, an achieved bitrate, an accuracy figure, both
 /// metrics, and a stream hash for each average-bitrate target, and nothing
-/// recomputed any of them. `docs/LIMITATIONS.md` publishes the envelope those
+/// recomputed any of them. `docs/CODEC-SPEC.md` publishes the envelope those
 /// figures describe, so an encoder change that moved them would have left the
 /// document describing a controller that no longer exists — which is the exact
 /// failure the rate-distortion half of this file was written to prevent.

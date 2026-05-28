@@ -108,7 +108,7 @@ fn the_average_bitrate_targets_cannot_be_read_as_a_curve() {
             assert!(
                 error.abs() <= 6.0,
                 "{clip} missed an average-bitrate target by {error:.2}%, outside the \
-                 envelope recorded in docs/LIMITATIONS.md"
+                 envelope recorded in docs/CODEC-SPEC.md"
             );
         }
 
@@ -342,7 +342,7 @@ fn a_bitrate_difference_that_does_not_follow_from_its_points_is_caught() {
 
 #[test]
 fn the_published_average_bitrate_envelope_is_the_receipt_s_own() {
-    // `docs/LIMITATIONS.md` states a mean, a worst case, and a count of points
+    // `docs/CODEC-SPEC.md` states a mean, a worst case, and a count of points
     // over five percent. Those numbers used to be a memory of a sweep run once,
     // against three encoder variants two of which no longer exist, and nothing
     // recomputed them. They are the receipt's aggregate now, and this is what

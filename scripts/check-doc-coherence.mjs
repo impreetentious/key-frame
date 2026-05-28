@@ -27,35 +27,28 @@ if (!/^\*\*Version:\*\* v\d+\.\d+\.\d+$/.test(readme.split("\n").at(-1) ?? "")) 
   errors.push("README version footer must be the final line");
 }
 
-const adrFiles = readdirSync(path.join(root, "docs/adr"))
-  .filter((name) => /^\d{4}-.*\.md$/.test(name))
-  .sort();
-adrFiles.forEach((name, expected) => {
-  const actual = Number.parseInt(name.slice(0, 4), 10);
-  if (actual !== expected) {
-    errors.push(`ADR sequence expected ${String(expected).padStart(4, "0")}, found ${name}`);
-  }
-  // And the title, which this used never to look at. Three records opened with
-  // `ADR NNNN` where the template and every cross-reference in the repository
-  // write `ADR-NNNN`, so a search for the canonical form missed them.
-  if (name === "0000-template.md") return;
-  const title = readFileSync(path.join(root, "docs/adr", name), "utf8").split("\n")[0] ?? "";
-  const expectedTitle = new RegExp(`^# ADR-${name.slice(0, 4)}: \\S`);
-  if (!expectedTitle.test(title)) {
-    errors.push(`${name} should open with "# ADR-${name.slice(0, 4)}: …", found ${JSON.stringify(title)}`);
-  }
-});
-
-// The index has to name every record, or it is a map with roads missing.
-const indexPath = path.join(root, "docs/adr/README.md");
-if (!existsSync(indexPath)) {
-  errors.push("docs/adr/README.md is missing, so the decision records have no index");
+// The decision log used to be a directory of numbered files with a separate
+// index; both are now one table in the specification, so the gate checks the
+// same invariant in its new home: a gapless numbered sequence with every row
+// present. A record cannot be dropped, duplicated, or added out of order
+// without failing here.
+const specPath = path.join(root, "docs/CODEC-SPEC.md");
+if (!existsSync(specPath)) {
+  errors.push("docs/CODEC-SPEC.md is missing, so the decision log has no home");
 } else {
-  const index = readFileSync(indexPath, "utf8");
-  for (const name of adrFiles) {
-    if (name === "0000-template.md") continue;
-    if (!index.includes(name)) errors.push(`docs/adr/README.md does not name ${name}`);
+  const spec = readFileSync(specPath, "utf8");
+  const numbers = [...spec.matchAll(/^\|\s*(\d{4})\s*\|/gm)].map((m) => Number.parseInt(m[1], 10));
+  if (numbers.length === 0) {
+    errors.push("docs/CODEC-SPEC.md has no decision-log rows");
   }
+  numbers.forEach((actual, index) => {
+    const expected = index + 1;
+    if (actual !== expected) {
+      errors.push(
+        `decision log expected row ${String(expected).padStart(4, "0")}, found ${String(actual).padStart(4, "0")}`,
+      );
+    }
+  });
 }
 
 // The README's `## Verify` block against the gate list it describes.

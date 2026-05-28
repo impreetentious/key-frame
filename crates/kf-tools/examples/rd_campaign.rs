@@ -61,13 +61,13 @@ const ABR_FRACTIONS: [(u32, u32); 3] = [(1, 2), (1, 1), (2, 1)];
 /// settles inside 3% by 48". Both halves were wrong: nothing produced the
 /// range, and the receipt this file writes has a worst case of 5.32% at 48
 /// frames, which `crates/kf-tools/tests/receipt_shape.rs` pins and
-/// `docs/LIMITATIONS.md` publishes. A comment restating a measured figure is a
+/// `docs/CODEC-SPEC.md` publishes. A comment restating a measured figure is a
 /// copy that goes stale, and this one contradicted the number beside it.
 ///
 /// Choosing the longer window because it flatters the result would be exactly
 /// the kind of quiet choice the benchmark rules exist to prevent, so the count
 /// is recorded in the receipt and the short-clip behaviour is named in
-/// `docs/LIMITATIONS.md` rather than left for someone to rediscover.
+/// `docs/CODEC-SPEC.md` rather than left for someone to rediscover.
 const ABR_FRAMES: usize = 48;
 
 const USAGE: &str = "\
@@ -272,7 +272,7 @@ fn run(arguments: Vec<String>) -> Result<String, String> {
                          curve. Measured over a longer window than the curves, because \
                          the controller is a leaky bucket that has to converge; the \
                          frame count is recorded per clip and the short-clip transient \
-                         is described in docs/LIMITATIONS.md.",
+                         is described in docs/CODEC-SPEC.md.",
                     ),
                 ),
                 ("clips", Json::Array(rate_control)),

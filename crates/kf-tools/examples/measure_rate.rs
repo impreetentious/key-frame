@@ -40,7 +40,7 @@ fn run(arguments: Vec<String>) -> Result<(), String> {
         .map_err(|_| "--frames must be a positive integer".to_owned())?;
     // The short prefix the settled measurement is compared against. Optional,
     // because most callers want one operating point; the rate gate passes it
-    // so the convergence `docs/LIMITATIONS.md` describes is measured rather
+    // so the convergence `docs/CODEC-SPEC.md` describes is measured rather
     // than remembered. That page used to publish a range — "5% to 13% over 24
     // frames" — that no receipt, gate, test, or decision record produced, and
     // that measurement does not support.

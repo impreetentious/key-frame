@@ -97,7 +97,7 @@ threading, no container format, no network streaming, and no GPU path.
 ## Limitations
 
 Every known weakness is named in full in
-[`docs/LIMITATIONS.md`](docs/LIMITATIONS.md), with the reason the design accepts
+[`docs/CODEC-SPEC.md`](docs/CODEC-SPEC.md), with the reason the design accepts
 it. The short version:
 
 The bitstream is original, so nothing else decodes a `.kfv` file. Compression
@@ -137,14 +137,13 @@ Node.js for repository checks
 
 - [`docs/bitstream.md`](docs/bitstream.md) is the decoder-normative v1 contract,
   generated from the frozen specification assets.
-- [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md) names every known weakness, why
-  the design accepts it, and what lifting it would take.
+- [`docs/CODEC-SPEC.md`](docs/CODEC-SPEC.md) names every known weakness, why
+  the design accepts it, what lifting it would take, and every architectural
+  decision with the alternatives weighed and the consequences accepted.
 - [`docs/claims.md`](docs/claims.md) maps every claim on this page to the check
   that would fail if it stopped being true — and a gate refuses to pass if a row
   names something that no longer exists.
-- [`docs/adr/`](docs/adr/) records every architectural decision, the alternatives
-  weighed, and the consequences accepted.
-- [`docs/writeups/`](docs/writeups/) is six pieces on why the codec is shaped the
+- [`docs/WRITEUPS.md`](docs/WRITEUPS.md) is six pieces on why the codec is shaped the
   way it is: legibility as a constraint, the range coder, the closed loop,
   freezing a bitstream, fuzzing your own decoder, and how to publish compression
   numbers honestly.
@@ -233,8 +232,8 @@ The workspace builds as Rust libraries and command-line binaries with `cargo
 build --workspace`. Every committed conformance stream and decoded hash is
 reproduced and required to be byte-identical by `./scripts/preflight.sh`, on
 whichever supported native target runs it. The two-target matrix that would run
-both on every change is configured and has never executed; `docs/LIMITATIONS.md`
-says why, and [`docs/adr/0018`](docs/adr/0018-preflight-is-the-arbiter.md)
+both on every change is configured and has never executed;
+[`docs/CODEC-SPEC.md`](docs/CODEC-SPEC.md) says why, and its decision log
 records the decision.
 
 ## Status and contributing
@@ -242,8 +241,8 @@ records the decision.
 Key Frame is pre-1.0 and single-maintainer. The bitstream version is a separate
 contract from the repository version: a syntax change requires an architectural
 decision record, a bitstream-version bump, regenerated independent vectors, and
-review of both decoder implementations. Records in
-[`docs/adr/`](docs/adr/README.md) are append-only and indexed there. Every change adds tests for the failure modes it touches and leaves
+review of both decoder implementations. The decision log in
+[`docs/CODEC-SPEC.md`](docs/CODEC-SPEC.md) is append-only. Every change adds tests for the failure modes it touches and leaves
 preflight green.
 
 ## License
@@ -252,4 +251,4 @@ Apache-2.0 © 2024-2026 Sidakpreet Singh — see [LICENSE](LICENSE).
 
 ---
 
-**Version:** v0.14.0
+**Version:** v0.14.1

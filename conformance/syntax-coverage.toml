@@ -16,7 +16,7 @@ context_count = 144
 # neighbor conditioning that version one declares but does not use: the coder
 # selects each group's slot from depth, plane class, transform size, and
 # position alone. They are held, not deleted, because the bank is frozen and
-# renumbering it would change every stream ever produced. `docs/adr/0012-reserved-context-slots.md`
+# renumbering it would change every stream ever produced. The decision log (row 0012)
 # records the decision.
 #
 # `vectors` names the streams that carry the row. A group's vectors must

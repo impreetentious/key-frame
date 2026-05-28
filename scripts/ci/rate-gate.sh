@@ -27,7 +27,7 @@ while IFS=$'\t' read -r name file _url _md5 _width _height _frames; do
       exit 1
       ;;
   esac
-  # Two lengths, not one. `docs/LIMITATIONS.md` says the controller is a
+  # Two lengths, not one. `docs/CODEC-SPEC.md` says the controller is a
   # single-pass leaky bucket that is measurably worse before it settles, and
   # that sentence used to carry a range of percentages no receipt, gate, or
   # decision record produced. The claim that is actually worth making is the

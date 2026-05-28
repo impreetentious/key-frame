@@ -69,7 +69,7 @@ if [[ -n "$foreign" ]]; then
   echo "dependency-closure: the lockfile resolves packages this workspace does not contain"
   printf '%s\n' "$foreign" | sed 's/^/  /'
   echo "  Every algorithm here is written here on purpose. A dependency is a decision"
-  echo "  that needs a record in docs/adr/ before it needs a lockfile entry."
+  echo "  that needs a decision-log row in docs/CODEC-SPEC.md before a lockfile entry."
   status=1
 fi
 
