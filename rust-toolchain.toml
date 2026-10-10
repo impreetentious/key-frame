@@ -1,5 +1,5 @@
 [toolchain]
-channel = "1.88.0"
+channel = "1.98.0"
 profile = "minimal"
 components = ["rustfmt", "clippy"]
 # The projection room's decoder is the same artifact the equality gate runs, so

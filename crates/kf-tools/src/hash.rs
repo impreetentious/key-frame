@@ -25,11 +25,11 @@ fn sha256(bytes: &[u8]) -> [u8; 32] {
         padded.push(0);
     }
     padded.extend_from_slice(&bit_length.to_be_bytes());
-    for chunk in padded.chunks_exact(64) {
+    for chunk in padded.as_chunks::<64>().0 {
         compress(&mut state, chunk);
     }
     let mut digest = [0_u8; 32];
-    for (destination, word) in digest.chunks_exact_mut(4).zip(state) {
+    for (destination, word) in digest.as_chunks_mut::<4>().0.iter_mut().zip(state) {
         destination.copy_from_slice(&word.to_be_bytes());
     }
     digest
@@ -37,7 +37,7 @@ fn sha256(bytes: &[u8]) -> [u8; 32] {
 
 fn compress(state: &mut [u32; 8], chunk: &[u8]) {
     let mut words = [0_u32; 64];
-    for (index, bytes) in chunk.chunks_exact(4).enumerate() {
+    for (index, bytes) in chunk.as_chunks::<4>().0.iter().enumerate() {
         words[index] = u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
     }
     for index in 16..64 {

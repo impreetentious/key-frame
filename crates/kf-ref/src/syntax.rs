@@ -316,7 +316,9 @@ fn literal_scan(size: u32) -> Result<Vec<usize>, ReferenceError> {
         .collect::<Result<_, _>>()?;
     let side = usize::try_from(size).map_err(|_| ReferenceError::new(0, "scan.size"))?;
     Ok(coordinates
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|pair| pair[1] * side + pair[0])
         .collect())
 }

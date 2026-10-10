@@ -130,7 +130,7 @@ replacement for standardized codecs.
 
 ## Stack
 
-Rust 1.88.0 · edition 2024 · WebAssembly · React · TypeScript · Vite · Bash ·
+Rust 1.98.0 · edition 2024 · WebAssembly · React · TypeScript · Vite · Bash ·
 Node.js for repository checks
 
 ## Project docs
@@ -164,7 +164,7 @@ Node.js for repository checks
 
 ## Run locally
 
-Install Rust 1.88.0 — the repository pin selects it and the WebAssembly target
+Install Rust 1.98.0 — the repository pin selects it and the WebAssembly target
 automatically — and a current Node.js LTS release.
 
 The fastest way to see what the codec does is the terminal demo. It generates a
@@ -251,4 +251,4 @@ Apache-2.0 © 2024-2026 Sidakpreet Singh — see [LICENSE](LICENSE).
 
 ---
 
-**Version:** v0.14.1
+**Version:** v0.14.2

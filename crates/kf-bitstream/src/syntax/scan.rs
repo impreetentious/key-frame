@@ -47,7 +47,9 @@ fn parse_scan(side: usize) -> Vec<usize> {
         "invariant: checked scan has one x/y pair per coefficient"
     );
     coordinates
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|pair| pair[1] * side + pair[0])
         .collect()
 }
