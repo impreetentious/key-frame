@@ -7,9 +7,9 @@ import {
   type StreamInfo,
 } from "./decoder";
 import { BlockPanel } from "./BlockPanel";
-import { CuttingRoom } from "./CuttingRoom";
+import { CuttingRoom, parseCatalogue } from "./CuttingRoom";
 import { Curves } from "./Curves";
-import { type CodingBlock, type FrameReport, blockAt, parseReport } from "./probe";
+import { type CodingBlock, type FrameReport, allBlocks, blockAt, parseReport } from "./probe";
 import {
   OVERLAY_LABELS,
   OVERLAY_NAMES,
@@ -17,7 +17,7 @@ import {
   drawOverlays,
   frameToImageData,
 } from "./render";
-import { type ViewState, decodeView, writeView } from "./share";
+import { type ViewState, DEFAULT_VIEW, decodeView, writeView } from "./share";
 import { type SourceClip, type WorstBlock, parseY4m, worstBlock } from "./source";
 
 // Both are produced by `scripts/build-inspector.sh` into `public/`. The sample
@@ -34,7 +34,21 @@ export function App() {
   const [decoder, setDecoder] = useState<Decoder | null>(null);
   const [info, setInfo] = useState<StreamInfo | null>(null);
   const [source, setSource] = useState("sample clip");
-  const [view, setView] = useState<ViewState>(() => decodeView(window.location.hash));
+  const [incoming] = useState(() => {
+    try { const view = decodeView(window.location.hash); return { view, error: "", legacy: window.location.hash.length > 1 && !view.streamDigest }; }
+    catch (error) { return { view: DEFAULT_VIEW, error: String(error), legacy: false }; }
+  });
+  const [view, setView] = useState<ViewState>(incoming.view);
+  const invalidIncoming = useRef(incoming.error);
+  const firstOpen = useRef(true);
+  const pending = useRef<ViewState | null>(incoming.view.streamDigest ? incoming.view : null);
+  const requiredSourceDigest = useRef(incoming.view.sourceDigest);
+  const [bookmarkStatus, setBookmarkStatus] = useState(incoming.error || (pending.current ? "Load the local file matching this bookmark." : "Unbound view bookmark"));
+  const [pendingBookmark, setPendingBookmark] = useState(Boolean(pending.current) || Boolean(incoming.error));
+  const generation = useRef({ stream: 0, source: 0 });
+  const [blockIndex, setBlockIndex] = useState("");
+  const [blockError, setBlockError] = useState("");
+  const [copyStatus, setCopyStatus] = useState("");
   const [frame, setFrame] = useState<DecodedFrame | null>(null);
   const [report, setReport] = useState<FrameReport | null>(null);
   const [frameError, setFrameError] = useState<string | null>(null);
@@ -53,37 +67,60 @@ export function App() {
   const pictureRef = useRef<HTMLCanvasElement | null>(null);
   const overlayRef = useRef<HTMLCanvasElement | null>(null);
 
+  const beginStream = useCallback(() => {
+    generation.current.source += 1;
+    requiredSourceDigest.current = pending.current?.sourceDigest;
+    setSourceClip(null);
+    setWorst(null);
+    setInfo(null);
+    setView((current) => { const next = { ...current }; delete next.streamDigest; delete next.sourceDigest; delete next.catalogue; return next; });
+    setFrame(null);
+    setReport(null);
+    return ++generation.current.stream;
+  }, []);
+  const hashBytes = async (bytes: Uint8Array): Promise<string> => {
+    if (!crypto.subtle) throw new Error("Web Crypto is unavailable; bound bookmarks require SHA-256");
+    return [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes.slice().buffer))].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  };
   const openStream = useCallback(
-    (loaded: Decoder, bytes: Uint8Array, label: string) => {
+    async (loaded: Decoder, bytes: Uint8Array, label: string, ticket: number, catalogue?: string) => {
       try {
+        let digest: string | undefined;
+        if (crypto.subtle) digest = await hashBytes(bytes);
+        if (ticket !== generation.current.stream) return;
+        if (invalidIncoming.current) return;
+        const requested = pending.current;
+        if (requested && !digest) { setBookmarkStatus("Web Crypto is unavailable; discard the requested bookmark for local inspection."); return; }
+        if (requested && requested.streamDigest !== digest) {
+          setBookmarkStatus("This file does not match the bookmark. Load the local matching KFV file.");
+          return;
+        }
         const opened = loaded.open(bytes);
+        if (requested) {
+          if (requested.frame >= opened.frameCount) throw new Error("invalid bookmark: frame is outside this stream");
+          if (requested.selection) {
+            const blocks = allBlocks(parseReport(loaded.probeFrame(requested.frame)));
+            if (!blocks.some((block) => block.x === requested.selection?.[0] && block.y === requested.selection?.[1])) throw new Error("invalid bookmark: no coding block at these coordinates");
+          }
+        }
         setInfo(opened);
         setSource(label);
         setFrameError(null);
         setRefused(null);
         setRecovery(null);
-        // The frame is clamped because a shared link may name one this stream
-        // does not have. The selection is left alone: clearing it here would
-        // throw away the block a shared link asked for, since opening the
-        // stream is the first thing that happens on load. Callers that mean to
-        // start fresh clear it themselves.
-        setView((current) => ({
-          ...current,
-          frame: Math.min(current.frame, opened.frameCount - 1),
-        }));
+        requiredSourceDigest.current = requested?.sourceDigest;
+        const initial = firstOpen.current;
+        setView((current) => ({ ...(requested ?? current), frame: requested ? requested.frame : (initial ? Math.min(current.frame, opened.frameCount - 1) : 0), selection: requested ? requested.selection : (initial ? current.selection : null), streamDigest: digest, sourceDigest: requested?.sourceDigest, catalogue } as ViewState));
+        firstOpen.current = false;
+        pending.current = null;
+        setPendingBookmark(false);
+        setBookmarkStatus(requested?.sourceDigest ? "Stream matched. Load the matching Y4M before source-error analysis. A match does not prove encoder provenance." : (digest ? (initial && incoming.legacy ? "Unbound view bookmark loaded; new links bind the loaded stream." : "Stream-bound bookmark") : "Web Crypto unavailable; local inspection only"));
       } catch (error) {
-        setInfo(null);
-        setFrame(null);
-        setReport(null);
-        setRecovery(null);
-        // Kept rather than discarded. A stream the strict path refuses is the
-        // only stream on which the recovery rules have anything to say.
-        setRefused(bytes);
-        setFrameError(error instanceof Error ? error.message : String(error));
+        if (ticket !== generation.current.stream) return;
+        if (pending.current) setBookmarkStatus(String(error));
+        else { setInfo(null); setFrame(null); setReport(null); setRecovery(null); setRefused(bytes); setFrameError(String(error)); }
       }
-    },
-    [],
-  );
+    }, []);
 
   /// Walks the refused stream to its end and shows what the rules did.
   const onWalkAnyway = useCallback(() => {
@@ -106,12 +143,20 @@ export function App() {
     (async () => {
       try {
         const loaded = await Decoder.load(MODULE_URL);
-        const response = await fetch(SAMPLE_URL);
+        let streamUrl = SAMPLE_URL;
+        let catalogue = "sample";
+        if (pending.current?.catalogue && pending.current.catalogue !== "sample") {
+          const listing = await fetch("./cutting-room.json");
+          const entries = parseCatalogue(await listing.json());
+          const entry = entries.find((entry) => entry.id === pending.current?.catalogue);
+          if (entry && /^\.\/regressions\/[^/]+\.kfv$/.test(entry.stream)) { streamUrl = entry.stream; catalogue = entry.id; }
+        }
+        const response = await fetch(streamUrl);
         if (!response.ok) throw new Error(`the sample clip did not load (${response.status})`);
         const bytes = new Uint8Array(await response.arrayBuffer());
         if (cancelled) return;
         setDecoder(loaded);
-        openStream(loaded, bytes, "sample clip");
+        await openStream(loaded, bytes, catalogue === "sample" ? "sample clip" : catalogue, beginStream(), catalogue);
         setStatus({ phase: "ready" });
       } catch (error) {
         if (cancelled) return;
@@ -123,8 +168,10 @@ export function App() {
     })();
     return () => {
       cancelled = true;
+      generation.current.stream += 1;
+      generation.current.source += 1;
     };
-  }, [openStream]);
+  }, [openStream, beginStream]);
 
   // Decode and probe whenever the requested frame changes. Both are synchronous
   // calls into the module; the frames here are small enough that yielding
@@ -148,11 +195,11 @@ export function App() {
     }
   }, [decoder, info, view.frame, recovery]);
 
-  useEffect(() => writeView(view), [view]);
+  useEffect(() => { if (!pendingBookmark) writeView(view); }, [view, pendingBookmark]);
 
   const selected = useMemo<CodingBlock | null>(() => {
     if (!report || !view.selection) return null;
-    return blockAt(report, view.selection[0], view.selection[1]);
+    return allBlocks(report).find((block) => block.x === view.selection?.[0] && block.y === view.selection?.[1]) ?? null;
   }, [report, view.selection]);
 
   // One integer scale, so a 64-wide clip is inspectable without the browser
@@ -180,23 +227,22 @@ export function App() {
   }, [report, info, view.overlays, view.basis, selected, scale]);
 
   const onPickBlock = (event: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!info) return;
+    if (!info || !report) return;
     const bounds = event.currentTarget.getBoundingClientRect();
     const x = Math.floor(((event.clientX - bounds.left) / bounds.width) * info.width);
     const y = Math.floor(((event.clientY - bounds.top) / bounds.height) * info.height);
-    setView((current) => ({ ...current, selection: [x, y] }));
+    const block = blockAt(report, x, y);
+    if (block) setView((current) => ({ ...current, selection: [block.x, block.y] }));
   };
 
   const onPickFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file || !decoder) return;
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    setView((current) => ({ ...current, frame: 0, selection: null }));
-    // A source loaded for the previous stream describes different pictures, so
-    // it is dropped rather than compared against the new one.
-    setSourceClip(null);
-    setWorst(null);
-    openStream(decoder, bytes, file.name);
+    const ticket = beginStream();
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      if (ticket === generation.current.stream) await openStream(decoder, bytes, file.name, ticket);
+    } catch (error) { if (ticket === generation.current.stream) setFrameError(String(error)); }
   };
 
   /// Loads the original clip a stream was encoded from.
@@ -206,9 +252,17 @@ export function App() {
   /// pictures, which is the one failure worse than not answering at all.
   const onPickSource = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file) return;
+    if (!file || !info || recovery) return;
+    const streamTicket = generation.current.stream;
+    const sourceTicket = ++generation.current.source;
+    const current = () => streamTicket === generation.current.stream && sourceTicket === generation.current.source;
+    setSourceClip(null); setWorst(null);
     try {
-      const clip = parseY4m(new Uint8Array(await file.arrayBuffer()));
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const digest = crypto.subtle ? await hashBytes(bytes) : undefined;
+      if (!current()) return;
+      if (requiredSourceDigest.current && digest !== requiredSourceDigest.current) throw new Error("This Y4M does not match the bookmark source");
+      const clip = parseY4m(bytes);
       if (!info) throw new Error("open a stream before its source");
       if (clip.width !== info.width || clip.height !== info.height) {
         throw new Error(
@@ -221,8 +275,11 @@ export function App() {
         );
       }
       setSourceClip(clip);
+      setView((current) => ({ ...current, sourceDigest: digest } as ViewState));
+      setBookmarkStatus("Compatible supplied source loaded; this does not prove it was the encoder original.");
       setFrameError(null);
     } catch (error) {
+      if (!current()) return;
       setSourceClip(null);
       setWorst(null);
       setFrameError(error instanceof Error ? error.message : String(error));
@@ -233,7 +290,8 @@ export function App() {
   const onFindWorst = () => {
     const plane = sourceClip?.luma[view.frame];
     if (!plane || !report || !frame) return;
-    const found = worstBlock(report, frame, plane);
+    let found: WorstBlock | null;
+    try { found = worstBlock(report, frame, plane); } catch (error) { setFrameError(String(error)); return; }
     setWorst(found);
     if (found) {
       setView((current) => ({ ...current, selection: [found.block.x, found.block.y] }));
@@ -251,18 +309,38 @@ export function App() {
   const onOpenStream = useCallback(
     async (url: string, label: string) => {
       if (!decoder) return;
+      const ticket = beginStream();
       try {
         const response = await fetch(url);
         if (!response.ok) throw new Error(`${label} did not load (${response.status})`);
-        openStream(decoder, new Uint8Array(await response.arrayBuffer()), label);
-        setView((current) => ({ ...current, tab: "projection", frame: 0, selection: null }));
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        if (ticket !== generation.current.stream) return;
+        const listing = await fetch("./cutting-room.json");
+        const entries = parseCatalogue(await listing.json());
+        const identity = entries.find((entry) => entry.stream === url)?.id;
+        if (ticket !== generation.current.stream) return;
+        await openStream(decoder, bytes, label, ticket, identity);
+        if (!pending.current) setView((current) => ({ ...current, tab: "projection" }));
       } catch (error) {
+        if (ticket !== generation.current.stream) return;
         setFrameError(error instanceof Error ? error.message : String(error));
         setView((current) => ({ ...current, tab: "projection" }));
       }
     },
-    [decoder, openStream],
+    [decoder, openStream, beginStream],
   );
+
+  const orderedBlocks = useMemo(() => report ? allBlocks(report).map((block, order) => ({ block, order })).sort((a,b) => a.block.y-b.block.y || a.block.x-b.block.x || a.block.size-b.block.size || a.order-b.order).map(({block}) => block) : [], [report]);
+  const selectedIndex = selected ? orderedBlocks.indexOf(selected) : -1;
+  useEffect(() => { setBlockIndex(selectedIndex < 0 ? "" : String(selectedIndex + 1)); setBlockError(""); }, [selectedIndex, report]);
+  const selectIndex = (index: number) => {
+    const block = orderedBlocks[index];
+    if (block) { setView((current) => ({ ...current, selection: [block.x, block.y] })); setBlockIndex(String(index + 1)); setBlockError(""); }
+  };
+  const commitIndex = () => {
+    if (!/^[0-9]+$/.test(blockIndex) || !Number.isSafeInteger(Number(blockIndex)) || Number(blockIndex) < 1 || Number(blockIndex) > orderedBlocks.length) { setBlockError("Enter a whole block index within the displayed count"); return; }
+    selectIndex(Number(blockIndex) - 1);
+  };
 
   if (status.phase === "loading") {
     return <main className="shell">Loading the decoder…</main>;
@@ -288,6 +366,8 @@ export function App() {
         </p>
       </header>
 
+      <p role="status">{bookmarkStatus}</p>
+      {pendingBookmark && <button type="button" onClick={() => { pending.current = null; invalidIncoming.current = ""; setPendingBookmark(false); setBookmarkStatus("Unbound view bookmark"); }}>Discard requested bookmark</button>}
       <nav className="tabs" aria-label="Sections">
         {(
           [
@@ -329,6 +409,14 @@ export function App() {
         <aside className="side">
           <StreamFacts info={info} source={source} report={report} frame={frame} />
           <OverlayControls view={view} setView={setView} />
+          <div className="card">
+            <h2>Block Navigation</h2>
+            <button type="button" disabled={!orderedBlocks.length || selectedIndex === 0} onClick={() => selectIndex(selectedIndex < 0 ? 0 : selectedIndex - 1)}>Previous block</button>
+            <button type="button" disabled={!orderedBlocks.length || selectedIndex === orderedBlocks.length - 1} onClick={() => selectIndex(selectedIndex < 0 ? 0 : selectedIndex + 1)}>Next block</button>
+            <label>Block index (1 to {orderedBlocks.length})<input aria-label="Block index" type="text" inputMode="numeric" disabled={!orderedBlocks.length} value={blockIndex} aria-invalid={Boolean(blockError)} onChange={(event) => setBlockIndex(event.target.value)} onBlur={() => { if (blockIndex !== "") commitIndex(); }} onKeyDown={(event) => { if (event.key === "Enter") commitIndex(); if (event.key === "Escape") { setBlockIndex(selectedIndex < 0 ? "" : String(selectedIndex + 1)); setBlockError(""); } }} /></label>
+            {blockError && <p role="alert">{blockError}</p>}
+            <p role="status" aria-live="polite">{selected ? `Block ${selectedIndex + 1}/${orderedBlocks.length}: (${selected.x}, ${selected.y}), ${selected.size}×${selected.size}` : "No block selected"}</p>
+          </div>
           <BlockPanel report={report} block={selected} worst={worst} />
         </aside>
       </section>
@@ -360,7 +448,7 @@ export function App() {
         </label>
         <label className="file">
           {sourceClip ? "Source loaded" : "Load the source clip"}
-          <input type="file" accept=".y4m" onChange={onPickSource} />
+          <input type="file" accept=".y4m" disabled={!info || Boolean(recovery)} onChange={onPickSource} />
         </label>
         <button
           type="button"
@@ -376,12 +464,14 @@ export function App() {
         </button>
         <button
           type="button"
+          disabled={pendingBookmark || !view.streamDigest}
           onClick={() => {
-            void navigator.clipboard?.writeText(window.location.href);
+            void navigator.clipboard.writeText(window.location.href).then(() => setCopyStatus("Copied"), () => setCopyStatus("Copy the address bar link manually"));
           }}
         >
           Copy link to this view
         </button>
+        <span role="status">{copyStatus}</span>
       </footer>
     </main>
   );
@@ -554,7 +644,6 @@ function Scrubber({
             setView((current) => ({
               ...current,
               frame: Number.parseInt(event.target.value, 10),
-              selection: null,
             }))
           }
         />

@@ -50,27 +50,42 @@ export const SOURCE_LIMITS = {
 /// and silently compare the wrong bytes, which is worse than refusing: the
 /// resulting error map would look plausible and mean nothing.
 export function parseY4m(bytes: Uint8Array): SourceClip {
-  const text = new TextDecoder("ascii", { fatal: false });
+  const text = new TextDecoder("utf-8", { fatal: true });
+  const decode = (part: Uint8Array): string => {
+    try { return text.decode(part); }
+    catch { throw new SourceError("invalid UTF-8 in Y4M header or marker"); }
+  };
+  const integer = (value: string): number => {
+    if (!/^\+?[0-9]+$/.test(value) || Number(value) > 65535) {
+      throw new SourceError("invalid unsigned Y4M integer");
+    }
+    return Number(value);
+  };
   const headerEnd = bytes.indexOf(0x0a);
   if (headerEnd < 0) throw new SourceError("this file has no YUV4MPEG2 header");
-
-  const header = text.decode(bytes.subarray(0, headerEnd));
-  const tags = header.split(" ");
+  const tags = decode(bytes.subarray(0, headerEnd)).split(/[ \t\n\f\r]+/).filter(Boolean);
   if (tags[0] !== "YUV4MPEG2") throw new SourceError("this file is not a Y4M clip");
-
   let width = 0;
   let height = 0;
+  let fps = false;
   let chroma: string = SOURCE_LIMITS.chroma;
   for (const tag of tags.slice(1)) {
     const kind = tag[0];
     const value = tag.slice(1);
-    if (kind === "W") width = Number.parseInt(value, 10);
-    else if (kind === "H") height = Number.parseInt(value, 10);
-    else if (kind === "C") chroma = value;
-    else if (kind === "I" && value !== "p") {
-      throw new SourceError("only progressive clips are supported");
-    }
+    if (kind === "W") width = integer(value);
+    else if (kind === "H") height = integer(value);
+    else if (kind === "F") {
+      const parts = value.split(":");
+      if (parts.length !== 2 || !integer(parts[0] ?? "") || !integer(parts[1] ?? "")) {
+        throw new SourceError("invalid Y4M frame rate");
+      }
+      fps = true;
+    } else if (kind === "C") chroma = value;
+    else if (kind === "I") {
+      if (value !== "p") throw new SourceError("only progressive clips are supported");
+    } else if (kind !== "A" && kind !== "X") throw new SourceError("unknown Y4M header tag");
   }
+  if (!fps) throw new SourceError("the Y4M frame rate is required");
   // The same bounds the codec's own reader enforces, and for the same reason.
   // This clip is only ever compared against a stream *this* codec produced, so
   // a clip outside what the codec can encode cannot be the source of one — and
@@ -106,8 +121,8 @@ export function parseY4m(bytes: Uint8Array): SourceClip {
   while (at < bytes.length) {
     const markEnd = bytes.indexOf(0x0a, at);
     if (markEnd < 0) throw new SourceError("a frame header is unterminated");
-    const mark = text.decode(bytes.subarray(at, markEnd));
-    if (!mark.startsWith("FRAME")) {
+    const mark = decode(bytes.subarray(at, markEnd));
+    if (mark !== "FRAME" && !mark.startsWith("FRAME ")) {
       throw new SourceError(`expected a FRAME marker, found ${JSON.stringify(mark.slice(0, 16))}`);
     }
     const start = markEnd + 1;
@@ -145,6 +160,9 @@ export function worstBlock(
   source: Uint8Array,
 ): WorstBlock | null {
   const width = decoded.width;
+  if (source.length !== width * decoded.height || decoded.y.length !== width * decoded.height) {
+    throw new SourceError("source and decoded luma planes do not match their dimensions");
+  }
   let worst: WorstBlock | null = null;
   let worstRatio = 0;
 
@@ -158,7 +176,7 @@ export function worstBlock(
         const x = block.x + column;
         if (x >= width) break;
         const index = y * width + x;
-        const difference = (source[index] ?? 0) - (decoded.y[index] ?? 0);
+        const difference = source[index]! - decoded.y[index]!;
         squaredError += difference * difference;
         samples += 1;
       }

@@ -14,6 +14,9 @@ import { NO_OVERLAYS, OVERLAY_NAMES, type HeatmapBasis, type Overlays } from "./
 export type Tab = "projection" | "cutting" | "curves";
 
 export interface ViewState {
+  streamDigest?: string;
+  sourceDigest?: string;
+  catalogue?: string;
   tab: Tab;
   frame: number;
   overlays: Overlays;
@@ -50,6 +53,9 @@ export function encodeView(view: ViewState): string {
   const parts = [`f=${view.frame}`, `o=${encodeOverlays(view.overlays)}`, `h=${view.basis}`];
   if (view.selection) parts.push(`b=${view.selection[0]},${view.selection[1]}`);
   if (view.tab !== DEFAULT_VIEW.tab) parts.push(`t=${view.tab}`);
+  if (view.streamDigest) parts.push(`s=${view.streamDigest}`);
+  if (view.sourceDigest) parts.push(`y=${view.sourceDigest}`);
+  if (view.catalogue) parts.push(`c=${encodeURIComponent(view.catalogue)}`);
   return parts.join("&");
 }
 
@@ -63,6 +69,33 @@ export function decodeView(fragment: string): ViewState {
     selection: null,
   };
 
+  const bound = parameters.has("s") || parameters.has("y") || parameters.has("c");
+  if (bound) {
+    for (const key of parameters.keys()) {
+      if (parameters.getAll(key).length !== 1 || !["s", "y", "c", "f", "o", "h", "b", "t"].includes(key)) throw new Error("invalid bookmark fields");
+    }
+    for (const [key, field] of [["s", "streamDigest"], ["y", "sourceDigest"]] as const) {
+      const digest = parameters.get(key);
+      if (digest !== null) {
+        if (!/^[0-9a-fA-F]{64}$/.test(digest)) throw new Error("invalid bookmark digest");
+        view[field] = digest.toLowerCase();
+      }
+    }
+    if (!view.streamDigest) throw new Error("a bound bookmark needs a stream digest");
+    const catalogue = parameters.get("c");
+    if (catalogue !== null) view.catalogue = catalogue;
+    const integer = (value: string) => /^[0-9]+$/.test(value) && Number.isSafeInteger(Number(value));
+    const frame = parameters.get("f");
+    if (frame !== null && !integer(frame)) throw new Error("invalid bookmark frame");
+    const selection = parameters.get("b");
+    if (selection !== null && (selection.split(",").length !== 2 || !selection.split(",").every(integer))) throw new Error("invalid bookmark block");
+    const overlays = parameters.get("o");
+    if (overlays !== null && (!overlays.split("").every((initial) => OVERLAY_NAMES.some((name) => name[0] === initial)) || new Set(overlays).size !== overlays.length)) throw new Error("invalid bookmark overlays");
+    const basis = parameters.get("h");
+    if (basis !== null && !["modeled", "emitted"].includes(basis)) throw new Error("invalid bookmark basis");
+    const tab = parameters.get("t");
+    if (tab !== null && !["projection", "cutting", "curves"].includes(tab)) throw new Error("invalid bookmark tab");
+  }
   const tab = parameters.get("t");
   if (tab === "projection" || tab === "cutting" || tab === "curves") view.tab = tab;
 

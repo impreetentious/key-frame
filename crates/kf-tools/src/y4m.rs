@@ -139,6 +139,13 @@ pub fn encode_y4m(stream: &Y4mStream) -> Result<Vec<u8>, Y4mError> {
     }) {
         return Err(error(0, "frame.dimensions"));
     }
+    if stream
+        .frames
+        .iter()
+        .any(|frame| frame.y.width() != frame.width() || frame.y.height() != frame.height())
+    {
+        return Err(error(0, "frame.luma_dimensions"));
+    }
     // The chroma planes are checked too. `Frame::filled_420` sizes them, but
     // the planes are public fields, and a frame carrying a wrong-sized chroma
     // plane would otherwise be written as a file whose frames are the wrong

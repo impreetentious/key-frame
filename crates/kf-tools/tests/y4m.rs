@@ -184,3 +184,49 @@ fn a_frame_with_wrong_sized_chroma_is_refused() {
         "frame.chroma_dimensions"
     );
 }
+
+#[test]
+fn mismatched_luma_shape_is_refused_even_in_a_later_frame() {
+    for (width, height) in [(32, 32), (128, 128), (32, 64), (64, 32), (128, 32)] {
+        let good = Frame::filled_420(64, 64, 0).unwrap();
+        let mut bad = good.clone();
+        bad.y = Plane::filled(width, height, 0).unwrap();
+        let stream = Y4mStream {
+            width: 64,
+            height: 64,
+            fps_num: 24,
+            fps_den: 1,
+            frames: vec![good, bad],
+        };
+        assert_eq!(
+            encode_y4m(&stream).unwrap_err().element,
+            "frame.luma_dimensions"
+        );
+    }
+}
+
+#[test]
+fn strict_header_and_marker_grammar_has_independent_cases() {
+    for (header, marker, expected) in [
+        ("W64 H64 F24:1", "FRAME", true),
+        ("W+64 H+64 F+24:+1", "FRAME Xnote=one", true),
+        ("W128 W64 H64 F1:1 F24:1 Cbad C420jpeg", "FRAME", true),
+        ("W64\tH64\x0cF24:1\rA0:0 Xnote=one", "FRAME", true),
+        ("W64junk H64 F24:1", "FRAME", false),
+        ("W64 H64.5 F24:1", "FRAME", false),
+        ("W64 H64", "FRAME", false),
+        ("W64 H64 F0:1", "FRAME", false),
+        ("W64 H64 F24:1:1", "FRAME", false),
+        ("W64 H64 F24:1 Q7", "FRAME", false),
+        ("W64 H64 F24:1 Ibad Ip", "FRAME", false),
+        ("W64 H64 F24:1", "FRAMEjunk", false),
+        ("W64 H64 F24:1", "FRAME\tXnote=one", false),
+    ] {
+        let mut bytes = format!("YUV4MPEG2 {header}\n{marker}\n").into_bytes();
+        bytes.extend_from_slice(&vec![0; 6144]);
+        assert_eq!(decode_y4m(&bytes).is_ok(), expected, "{header} / {marker}");
+    }
+    let mut invalid = b"YUV4MPEG2 W64 H64 F24:1 X".to_vec();
+    invalid.extend_from_slice(&[255, b'\n']);
+    assert_eq!(decode_y4m(&invalid).unwrap_err().element, "header.utf8");
+}

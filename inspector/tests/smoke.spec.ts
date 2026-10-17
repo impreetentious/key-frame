@@ -88,7 +88,7 @@ test("overlays draw on top of the picture", async ({ page }) => {
 
 test("clicking a block shows its syntax", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByText("Click the picture to select a coding block.")).toBeVisible();
+  await expect(page.getByText("Click the picture or use the block navigation controls to select a coding block.")).toBeVisible();
 
   const overlay = page.locator("canvas.overlay");
   const box = await overlay.boundingBox();
@@ -109,6 +109,7 @@ test("clicking a block shows its syntax", async ({ page }) => {
 
 test("a shared link restores the view it encoded", async ({ page }) => {
   await page.goto("/#f=1&o=pe&h=emitted&b=0,0");
+  await expect(page.getByText(/Unbound view bookmark loaded/)).toBeVisible();
   await expect(page.getByText("2 decodes from keyframe 0")).toBeVisible();
   await expect(page.getByLabel("Partition grid")).toBeChecked();
   await expect(page.getByLabel("Entropy heatmap")).toBeChecked();
@@ -292,7 +293,7 @@ test("with the source loaded, the ugly-block action names a block and its error"
   // refuses any .y4m in the build for good reason — no decoded video may reach
   // the page — so the test synthesises one instead of weakening that rule.
   await attachSource(page, 64, 64, 3, (at, index) => (at * 7 + index * 31) % 256);
-  await expect(page.getByText("Source loaded")).toBeVisible();
+  await expect(page.getByText("Source loaded", { exact: true })).toBeVisible();
 
   const button = page.getByRole("button", { name: "Why is this block ugly?" });
   await expect(button).toBeEnabled();
@@ -434,10 +435,13 @@ test("a damaged stream is refused, then walked, and the page says what the rules
   // Refused first, which is the right answer for a stream that should be intact.
   const offer = page.getByRole("button", { name: /Walk it anyway/ });
   await expect(offer).toBeVisible();
+  await expect(page.getByRole("button", { name: "Copy link to this view" })).toBeDisabled();
+  expect(new URLSearchParams(new URL(page.url()).hash.slice(1)).has("s")).toBe(false);
 
   // And then walked, with one cell per packet and the counts stated in words.
   await offer.click();
   await expect(page.getByRole("heading", { name: "What the rules did" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Copy link to this view" })).toBeDisabled();
   const packets = page.locator(".packets .packet");
   await expect(packets).toHaveCount(3);
   await expect(page.getByText(/3 packet\(s\): 1 decoded, 2 did not/)).toBeVisible();
@@ -462,4 +466,84 @@ test("a damaged stream is refused, then walked, and the page says what the rules
   expect(first.length).toBeGreaterThan(0);
   expect(await pixelsAt(1)).toBe(first);
   expect(await pixelsAt(2)).toBe(first);
+});
+
+
+test("keyboard controls select actual blocks and refuse invalid indices", async ({ page }) => {
+  await page.goto("/");
+  const next = page.getByRole("button", {name:"Next block",exact:true});
+  await expect(next).toBeEnabled();
+  await next.focus(); await page.keyboard.press("Enter");
+  const field = page.getByLabel("Block index",{exact:true});
+  await expect(field).toHaveValue("1");
+  const firstUrl = page.url();
+  await field.fill("1.5"); await field.press("Enter");
+  await expect(page.getByRole("alert")).toContainText("whole block index");
+  expect(page.url()).toBe(firstUrl);
+  await field.press("Escape"); await expect(field).toHaveValue("1");
+  const label = await field.locator("..").textContent();
+  const count = Number(label?.match(/1 to (\d+)/)?.[1]);
+  await field.fill(String(count)); await field.press("Enter");
+  await expect(next).toBeDisabled();
+  const bound = page.url();
+  expect(new URLSearchParams(new URL(bound).hash.slice(1)).get("s")).toMatch(/^[0-9a-f]{64}$/);
+  await page.goto(bound);
+  await expect(field).toHaveValue(String(count));
+});
+
+test("a wrong stream leaves a requested bookmark pending and its fragment intact", async ({ page }) => {
+  const fragment = `#s=${"0".repeat(64)}&f=0&o=p&h=modeled&b=0,0`;
+  await page.goto(`/${fragment}`);
+  await expect(page.getByText("This file does not match the bookmark.",{exact:false})).toBeVisible();
+  expect(new URL(page.url()).hash).toBe(fragment);
+  await expect(page.getByRole("button",{name:"Copy link to this view"})).toBeDisabled();
+});
+
+test("supplied sources can be replaced locally while an imported source digest refuses a different file", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByText("64×64")).toBeVisible();
+  await attachSource(page, 64, 64, 3, () => 64);
+  await expect(page.getByText("Source loaded", { exact: true })).toBeVisible();
+  await expect.poll(() => new URLSearchParams(new URL(page.url()).hash.slice(1)).get("y")).toMatch(/^[0-9a-f]{64}$/);
+  const bookmarked = page.url();
+  const first = new URLSearchParams(new URL(bookmarked).hash.slice(1)).get("y");
+  await attachSource(page, 64, 64, 3, () => 128);
+  await expect.poll(() => new URLSearchParams(new URL(page.url()).hash.slice(1)).get("y")).not.toBe(first);
+  await expect(page.getByRole("button", { name: "Why is this block ugly?" })).toBeEnabled();
+  await page.goto(bookmarked);
+  await page.reload();
+  await expect(page.getByText("Stream matched.", { exact: false })).toBeVisible();
+  await attachSource(page, 64, 64, 3, () => 128);
+  await expect(page.getByText(/This Y4M does not match the bookmark source/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Why is this block ugly?" })).toBeDisabled();
+  await attachSource(page, 64, 64, 3, () => 64);
+  await expect(page.getByRole("button", { name: "Why is this block ugly?" })).toBeEnabled();
+});
+
+test("a late source read cannot attach to a replacement stream", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByText("64×64")).toBeVisible();
+  await page.evaluate(() => {
+    const original = File.prototype.arrayBuffer;
+    File.prototype.arrayBuffer = function () {
+      if (this.name !== "source.y4m") return original.call(this);
+      return new Promise<ArrayBuffer>((resolve) => {
+        (window as unknown as { releaseSource: () => Promise<void> }).releaseSource = async () => resolve(await original.call(this));
+      });
+    };
+  });
+  await attachSource(page, 64, 64, 3, () => 64);
+  await page.evaluate(async () => {
+    const bytes = await (await fetch("./sample.kfv")).arrayBuffer();
+    const input = document.querySelector<HTMLInputElement>('input[type="file"][accept=".kfv"]');
+    if (!input) throw new Error("stream input missing");
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([bytes], "replacement.kfv"));
+    input.files = transfer.files;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  await expect(page.getByText("replacement.kfv", { exact: true })).toBeVisible();
+  await page.evaluate(() => (window as unknown as { releaseSource: () => Promise<void> }).releaseSource());
+  await expect(page.getByRole("button", { name: "Why is this block ugly?" })).toBeDisabled();
+  expect(new URLSearchParams(new URL(page.url()).hash.slice(1)).has("y")).toBe(false);
 });

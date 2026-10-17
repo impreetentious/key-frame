@@ -233,3 +233,38 @@ test("the page's Y4M reader accepts exactly what the codec's own reader accepts"
     expect(() => parseY4m(clip(header))).toThrow(/dimensions this format allows/);
   }
 });
+
+
+test("source grammar agrees with hand-authored strict native cases", () => {
+  for (const [header, marker, accepted] of [
+    ["W64 H64 F24:1", "FRAME", true],
+    ["W+64 H+64 F+24:+1", "FRAME Xnote=one", true],
+    ["W128 W64 H64 F1:1 F24:1 Cbad C420jpeg", "FRAME", true],
+    ["W64\tH64\fF24:1\rA0:0 Xnote=one", "FRAME", true],
+    ["W64junk H64 F24:1", "FRAME", false],
+    ["W64 H64.5 F24:1", "FRAME", false],
+    ["W64 H64", "FRAME", false],
+    ["W64 H64 F0:1", "FRAME", false],
+    ["W64 H64 F24:1:1", "FRAME", false],
+    ["W64 H64 F24:1 Q7", "FRAME", false],
+    ["W64 H64 F24:1 Ibad Ip", "FRAME", false],
+    ["W64 H64 F24:1", "FRAMEjunk", false],
+    ["W64 H64 F24:1", "FRAME\tXnote=one", false],
+  ] as const) {
+    const prefix = new TextEncoder().encode(`YUV4MPEG2 ${header}\n${marker}\n`);
+    const bytes = new Uint8Array(prefix.length + 6144); bytes.set(prefix);
+    if (accepted) expect(parseY4m(bytes).frameCount).toBe(1);
+    else expect(() => parseY4m(bytes)).toThrow(SourceError);
+  }
+  const bytes = new Uint8Array([...new TextEncoder().encode("YUV4MPEG2 W64 H64 F24:1 X"), 255, 10]);
+  expect(() => parseY4m(bytes)).toThrow(SourceError);
+});
+
+test("bound bookmarks reject ambiguous fields while legacy views remain tolerant", () => {
+  const digest = "a".repeat(64);
+  expect(decodeView(`#s=${digest.toUpperCase()}&f=0&o=p&h=modeled`).streamDigest).toBe(digest);
+  for (const fields of ["f=1junk", "f=1&f=2", "b=1.5,0", "b=1,2,3", "h=wrong", "s=bad", "o=pp"]) {
+    expect(() => decodeView(`#s=${digest}&${fields}`)).toThrow();
+  }
+  expect(decodeView("#f=1junk").frame).toBe(1);
+});

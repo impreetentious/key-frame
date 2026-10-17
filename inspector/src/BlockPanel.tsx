@@ -19,7 +19,7 @@ export function BlockPanel({
     return (
       <div className="card">
         <h2>Block</h2>
-        <p className="hint">Click the picture to select a coding block.</p>
+        <p className="hint">Click the picture or use the block navigation controls to select a coding block.</p>
       </div>
     );
   }

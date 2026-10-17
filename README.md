@@ -6,7 +6,7 @@ The compressed file records none of that reasoning. Anyone asking why a
 particular block looks the way it does is left reading a production codebase
 where the answer is spread across a million lines written for speed.
 
-## What it does
+## What It DOES
 
 Key Frame is an original video codec written to be read. It compresses 8-bit
 4:2:0 video into a small, completely specified bitstream, then decodes that
@@ -86,7 +86,7 @@ specification. Every gate in the repository exists to prove the two agree.
 - Verifies itself with one command that runs every gate its pipeline defines,
   in the same order.
 
-## What it is not
+## What It Is NOT
 
 Key Frame is not an implementation of H.264, HEVC, VP9, AV1, or any other
 standardized format, and it does not read or write their files. Its bitstream is
@@ -118,7 +118,7 @@ against the 116 the format can actually code rather than as a percentage of the
 whole bank. Linux x86_64 and macOS arm64 are the supported native targets;
 Windows is not supported.
 
-## Intellectual property
+## Intellectual Property
 
 Key Frame is an original educational codec: its bitstream is its own, and it
 implements no proprietary or standardized format. The techniques it uses (block
@@ -133,7 +133,7 @@ replacement for standardized codecs.
 Rust 1.98.0 · edition 2024 · WebAssembly · React · TypeScript · Vite · Bash ·
 Node.js for repository checks
 
-## Project docs
+## Project Docs
 
 - [`docs/bitstream.md`](docs/bitstream.md) is the decoder-normative v1 contract,
   generated from the frozen specification assets.
@@ -162,7 +162,7 @@ Node.js for repository checks
   browser page that decodes streams live and the catalogue of real defects the
   gates have found, each pinned to the stream that produced it.
 
-## Run locally
+## Run Locally
 
 Install Rust 1.98.0 — the repository pin selects it and the WebAssembly target
 automatically — and a current Node.js LTS release.
@@ -226,7 +226,7 @@ projection-room gates, then the terminal-demo end to end, then formatting,
 lints, the forbidden-API and decoder-boundary scan, the full test suite, and the
 documentation build.
 
-## Build and deploy
+## Build and Deploy
 
 The workspace builds as Rust libraries and command-line binaries with `cargo
 build --workspace`. Every committed conformance stream and decoded hash is
@@ -236,7 +236,7 @@ both on every change is configured and has never executed;
 [`docs/CODEC-SPEC.md`](docs/CODEC-SPEC.md) says why, and its decision log
 records the decision.
 
-## Status and contributing
+## Status and Contributing
 
 Key Frame is pre-1.0 and single-maintainer. The bitstream version is a separate
 contract from the repository version: a syntax change requires an architectural
@@ -251,4 +251,4 @@ Apache-2.0 © 2024-2026 Sidakpreet Singh — see [LICENSE](LICENSE).
 
 ---
 
-**Version:** v0.14.2
+**Version:** v0.14.3
